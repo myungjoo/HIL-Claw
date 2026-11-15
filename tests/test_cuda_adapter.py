@@ -20,9 +20,11 @@ from hilclaw.cuda_adapter import (
     assemble_timing,
     build,
     check_device,
+    check_device_in_container,
     device_outcome,
     device_probe,
     interpret_container_probe,
+    interpret_device_container_probe,
     interpret_device_probe,
     interpret_probe,
     measure,
@@ -1025,3 +1027,380 @@ def test_real_check_device_goes_on_with_a_usable_device(nvidia_smi):
     outcome = check_device(timeout_s=LIMIT)
     assert_form(outcome, GO_ON)
     assert "(driver " in outcome.carried
+
+
+# The device check in a probe container (ADR-0207 decisions 6 and 7)
+
+GPU_LINE = b"NVIDIA GeForce RTX 4070, 617.14\n"
+CUDA_IMAGE = os.environ.get("HILCLAW_CUDA_IMAGE") or "cuda:13.1.2"
+
+
+@pytest.mark.parametrize(
+    ("answer", "state", "version", "message"),
+    [
+        (
+            contained(stdout=GPU_LINE),
+            PRESENT,
+            "NVIDIA GeForce RTX 4070 (driver 617.14)",
+            None,
+        ),
+        (contained(returncode=125), ABSENT, None, None),
+        (contained(returncode=126), ABSENT, None, None),
+        (contained(returncode=127), ABSENT, None, None),
+        (contained(returncode=6), ABSENT, None, NO_DEVICE),
+        (contained(returncode=9), ABSENT, None, NO_DEVICE),
+        (contained(returncode=12), ABSENT, None, NO_DEVICE),
+        (contained(returncode=1, stdout=GPU_LINE), UNREADABLE, None, None),
+        (contained(returncode=-11), UNREADABLE, None, None),
+        (contained(returncode=None, timed_out=True), UNREADABLE, None, None),
+        (contained(stdout=b""), UNREADABLE, None, None),
+        (contained(stdout=b"no comma here\n"), UNREADABLE, None, None),
+        (local_run.ProgramNotFoundError("docker"), ABSENT, None, None),
+        (OSError(2, "gone"), ABSENT, None, None),
+        (NotADirectoryError(20, "not a directory"), ABSENT, None, None),
+        (standin_container.NoNumericUserError("no uid"), ABSENT, None, None),
+    ],
+)
+def test_interpret_device_container_probe_on_recorded_answers(
+    answer, state, version, message
+):
+    found = interpret_device_container_probe(answer)
+    assert type(found) is Probe
+    assert (found.state, found.version) == (state, version)
+    assert type(found.message) is str and found.message
+    if message is not None:
+        assert found.message == message
+    if state != PRESENT:
+        assert "docker" not in found.message
+        assert "build" not in found.message
+
+
+def test_interpret_device_container_probe_tells_the_container_cases_apart():
+    messages = {
+        interpret_device_container_probe(contained(returncode=status)).message
+        for status in (125, 127, 6, 3)
+    }
+    messages.add(interpret_device_container_probe(OSError()).message)
+    timed_out = contained(returncode=None, timed_out=True)
+    messages.add(interpret_device_container_probe(timed_out).message)
+    assert len(messages) == 6
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [KeyboardInterrupt(), OverflowError("limit"), TypeError("x"), ValueError("x")],
+)
+def test_interpret_device_container_probe_leaves_other_exceptions(answer):
+    assert interpret_device_container_probe(answer) is None
+
+
+def test_interpret_device_container_probe_refuses_other_values():
+    with pytest.raises(TypeError) as caught:
+        interpret_device_container_probe(recorded())
+    assert caught.value.parameter == "answer"
+    with pytest.raises(TypeError) as caught:
+        interpret_device_container_probe(None)
+    assert caught.value.parameter == "answer"
+    with pytest.raises(ValueError):
+        interpret_device_container_probe(contained(returncode=None))
+    with pytest.raises(ValueError):
+        interpret_device_container_probe(contained(returncode=True))
+
+
+class ClientStarts:
+    def __init__(self, *answers):
+        self.calls = []
+        self.answers = list(answers)
+
+    def __call__(self, command, **options):
+        self.calls.append((list(command), options))
+        answer = self.answers.pop(0) if self.answers else (0, GPU_LINE, False)
+        if isinstance(answer, BaseException):
+            raise answer
+        status, stdout, timed_out = answer
+        return local_run.RunResult(
+            returncode=None if timed_out else status,
+            timed_out=timed_out,
+            stdout=stdout,
+            stderr=b"",
+            command=tuple(command),
+            duration_s=0.1,
+        )
+
+
+@pytest.fixture
+def client_starts(monkeypatch):
+    monkeypatch.setattr(os, "getuid", lambda: 1234, raising=False)
+    monkeypatch.setattr(os, "getgid", lambda: 567, raising=False)
+
+    def install(*answers):
+        stub = ClientStarts(*answers)
+        monkeypatch.setattr(local_run, "run", stub)
+        return stub
+
+    return install
+
+
+@pytest.fixture
+def probe_dir(tmp_path):
+    directory = tmp_path / "build"
+    directory.mkdir()
+    return directory
+
+
+def probe_in_container(build_dir, **options):
+    options.setdefault("timeout_s", 30)
+    options.setdefault("removal_timeout_s", 10)
+    return check_device_in_container("cuda:13.1.2", build_dir, **options)
+
+
+def test_check_device_in_container_goes_on_with_a_gpu_line(client_starts, probe_dir):
+    starts = client_starts()
+    outcome = probe_in_container(probe_dir)
+    assert_form(outcome, GO_ON)
+    assert outcome.carried == "NVIDIA GeForce RTX 4070 (driver 617.14)"
+    ((command, options),) = starts.calls
+    image_at = command.index("cuda:13.1.2")
+    assert command[0] == "docker"
+    assert command[image_at + 1 :] == [DEVICE_PROGRAM, *DEVICE_QUERY]
+    before = command[:image_at]
+    assert before[before.index("--gpus") + 1] == "all"
+    assert before[before.index("--network") + 1] == "none"
+    assert before[before.index("--pull") + 1] == "never"
+    assert before[before.index("--mount") + 1] == (
+        f"type=bind,source={os.fspath(probe_dir)},target=/build"
+    )
+    assert options == {"timeout_s": 30, "env": None}
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        (125, b"", False),
+        (126, b"", False),
+        (127, b"", False),
+        (6, b"", False),
+        (1, GPU_LINE, False),
+        (0, b"", False),
+        (0, b"garbage\n", False),
+        (None, b"", True),
+    ],
+)
+def test_check_device_in_container_is_device_unavailable_otherwise(
+    client_starts, probe_dir, answer
+):
+    client_starts(answer, (0, b"", False))
+    outcome = probe_in_container(probe_dir)
+    assert_form(outcome, TOOL_FAILURE, kind="device_unavailable")
+    assert type(outcome.message) is str and outcome.message
+    assert "cuda:13.1.2" not in outcome.message
+    assert os.fspath(probe_dir) not in outcome.message
+
+
+def test_check_device_in_container_past_the_limit_removes_the_container(
+    client_starts, probe_dir
+):
+    starts = client_starts((None, b"", True), (0, b"", False))
+    outcome = probe_in_container(probe_dir, timeout_s=5, removal_timeout_s=2)
+    assert_form(outcome, TOOL_FAILURE, kind="device_unavailable")
+    _, (remove, options) = starts.calls
+    assert remove[:3] == ["docker", "rm", "--force"]
+    assert options == {"timeout_s": 2, "env": None}
+
+
+@pytest.mark.parametrize(
+    "error",
+    [local_run.ProgramNotFoundError("docker"), PermissionError(13, "denied")],
+)
+def test_check_device_in_container_that_cannot_start_is_device_unavailable(
+    client_starts, probe_dir, error
+):
+    client_starts(error)
+    outcome = probe_in_container(probe_dir)
+    assert_form(outcome, TOOL_FAILURE, kind="device_unavailable")
+    assert "docker" not in outcome.message
+
+
+def test_check_device_in_container_without_a_numeric_user_is_device_unavailable(
+    client_starts, probe_dir, monkeypatch
+):
+    starts = client_starts()
+    monkeypatch.delattr(os, "getuid", raising=False)
+    outcome = probe_in_container(probe_dir)
+    assert_form(outcome, TOOL_FAILURE, kind="device_unavailable")
+    assert starts.calls == []
+
+
+def test_check_device_in_container_with_a_missing_build_dir_is_device_unavailable(
+    client_starts, tmp_path
+):
+    starts = client_starts()
+    outcome = probe_in_container(tmp_path / "absent")
+    assert_form(outcome, TOOL_FAILURE, kind="device_unavailable")
+    assert "absent" not in outcome.message
+    assert starts.calls == []
+
+
+@pytest.mark.parametrize(
+    ("image", "options", "parameter"),
+    [
+        ("-x", {}, "image"),
+        (3, {}, "image"),
+        ("cuda:13.1.2", {"timeout_s": 0}, "timeout_s"),
+        ("cuda:13.1.2", {"removal_timeout_s": "1"}, "removal_timeout_s"),
+        ("cuda:13.1.2", {"client": ""}, "client"),
+    ],
+)
+def test_check_device_in_container_refuses_its_arguments_before_anything_starts(
+    client_starts, probe_dir, image, options, parameter
+):
+    starts = client_starts()
+    options.setdefault("timeout_s", 30)
+    options.setdefault("removal_timeout_s", 10)
+    with pytest.raises((TypeError, ValueError)) as caught:
+        check_device_in_container(image, probe_dir, **options)
+    assert caught.value.parameter == parameter
+    assert starts.calls == []
+
+
+def test_check_device_in_container_refuses_a_relative_build_dir(client_starts):
+    starts = client_starts()
+    with pytest.raises(ValueError) as caught:
+        probe_in_container("relative")
+    assert caught.value.parameter == "build_dir"
+    assert starts.calls == []
+
+
+def test_check_device_in_container_passes_on_what_it_does_not_place(
+    client_starts, probe_dir
+):
+    client_starts(OverflowError("limit"), (0, b"", False))
+    with pytest.raises(OverflowError) as caught:
+        probe_in_container(probe_dir)
+    assert caught.value.container_name.startswith(standin_container.NAME_PREFIX)
+
+
+STUB_CLIENT = (
+    '#!/bin/sh\nprintf "%s" "$HILCLAW_TEST_OUT"\nexit "$HILCLAW_TEST_STATUS"\n'
+)
+
+
+@posix_only
+@pytest.mark.parametrize(
+    ("status", "output", "form"),
+    [
+        (0, "NVIDIA GeForce RTX 4070, 617.14\n", GO_ON),
+        (125, "", TOOL_FAILURE),
+        (127, "", TOOL_FAILURE),
+        (3, "", TOOL_FAILURE),
+    ],
+)
+def test_check_device_in_container_with_a_stub_client_on_path(
+    tmp_path, probe_dir, monkeypatch, status, output, form
+):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    client = bin_dir / "docker"
+    client.write_text(STUB_CLIENT, encoding="utf-8")
+    client.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}")
+    monkeypatch.setenv("HILCLAW_TEST_STATUS", str(status))
+    monkeypatch.setenv("HILCLAW_TEST_OUT", output)
+    outcome = probe_in_container(probe_dir)
+    assert outcome.form == form
+    if form == TOOL_FAILURE:
+        assert outcome.kind == "device_unavailable"
+
+
+def test_check_device_in_container_with_no_client_on_path(probe_dir, monkeypatch):
+    monkeypatch.setattr(os, "getuid", lambda: 1234, raising=False)
+    monkeypatch.setattr(os, "getgid", lambda: 567, raising=False)
+    outcome = probe_in_container(probe_dir, client=MISSING)
+    assert_form(outcome, TOOL_FAILURE, kind="device_unavailable")
+    assert MISSING not in outcome.message
+
+
+def _docker(*arguments):
+    try:
+        return subprocess.run(
+            ["docker", *arguments], capture_output=True, timeout=60, check=False
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+
+@pytest.fixture
+def gpu_container():
+    if os.name != "posix":
+        pytest.skip("the runtime's containers need a POSIX host (C-7 1)")
+    if shutil.which("docker") is None:
+        pytest.skip("docker is not on PATH (FR-19 (5))")
+    found = _docker("image", "inspect", CUDA_IMAGE)
+    if found is None or found.returncode != 0:
+        pytest.skip(f"the image {CUDA_IMAGE} is not in the store (FR-19 (5))")
+    runtimes = _docker("info", "--format", "{{json .Runtimes}}")
+    if runtimes is None or b"nvidia" not in runtimes.stdout:
+        pytest.skip("Docker has no NVIDIA Container Toolkit runtime (FR-19 (5))")
+    if shutil.which("nvidia-smi") is None:
+        pytest.skip("nvidia-smi is not on PATH: no usable GPU (FR-19 (5))")
+    if device_probe(timeout_s=LIMIT).state != PRESENT:
+        pytest.skip("the host reports no usable GPU (FR-19 (5))")
+    return CUDA_IMAGE
+
+
+def test_real_check_device_in_container_goes_on_with_a_usable_device(
+    gpu_container, probe_dir
+):
+    outcome = check_device_in_container(
+        gpu_container, probe_dir, timeout_s=LIMIT, removal_timeout_s=60
+    )
+    assert_form(outcome, GO_ON)
+    assert "(driver " in outcome.carried
+    assert list(probe_dir.iterdir()) == []
+
+
+def test_real_check_device_in_container_without_the_image_is_device_unavailable(
+    gpu_container, probe_dir
+):
+    outcome = check_device_in_container(
+        "hilclaw-no-such-image:0", probe_dir, timeout_s=LIMIT, removal_timeout_s=60
+    )
+    assert_form(outcome, TOOL_FAILURE, kind="device_unavailable")
+
+
+BUILD_AND_RUN = (
+    "nvcc -O2 -arch=native -o scale scale.cu && ./scale && "
+    "{ command -v nvidia-smi >/dev/null && "
+    "nvidia-smi --query-gpu=name --format=csv,noheader || echo no-gpu; }"
+)
+
+
+def _build_and_run(image, build_dir, gpus):
+    shutil.copyfile(FIXTURES / "scale.cu", build_dir / "scale.cu")
+    return standin_container.run_in_container(
+        image,
+        build_dir,
+        "sh",
+        ["-c", BUILD_AND_RUN],
+        timeout_s=LIMIT,
+        removal_timeout_s=60,
+        gpus=gpus,
+    )
+
+
+def test_real_gpu_container_builds_with_arch_native_and_sees_the_gpu(
+    gpu_container, probe_dir
+):
+    done = _build_and_run(gpu_container, probe_dir, True)
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.decode().splitlines()[0] == "built"
+    assert b"no-gpu" not in done.stdout
+    assert b"Cannot find valid GPU" not in done.stderr
+    assert (probe_dir / "scale").is_file()
+
+
+def test_real_container_without_gpus_does_not_see_the_gpu(gpu_container, probe_dir):
+    done = _build_and_run(gpu_container, probe_dir, False)
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.decode().split() == ["built", "no-gpu"]
+    assert b"Cannot find valid GPU" in done.stderr
