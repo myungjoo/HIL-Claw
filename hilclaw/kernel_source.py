@@ -79,8 +79,6 @@ import stat
 from pathlib import Path
 from typing import NamedTuple
 
-from hilclaw import targets
-
 OUTPUT_NAME = "output"
 
 #: The languages the reader knows, each a language of the contract table (ADR-0208 decision 1).
@@ -162,20 +160,25 @@ def is_admitted_name(name, *, language="c"):
     return name.rpartition(".")[0] not in _RESERVED_STEMS
 
 
-def language_at(accelerator, table=targets.TABLE):
+def language_at(accelerator, table=None):
     """Return the language of the kernel files of a run whose ``accelerator`` is ``accelerator``.
 
     It is the language every contract of the :class:`hilclaw.targets.Target`
-    of ``accelerator`` in ``table`` is written in (ADR-0208 decision 1):
+    of ``accelerator`` in ``table``, by default
+    :data:`hilclaw.targets.TABLE`, is written in (ADR-0208 decision 1):
     ``"cuda"`` for ``cuda_gpu``, ``"c"`` for ``cpu_standin`` and
     ``virtual_npu``. Where ``table`` holds no target for ``accelerator``,
     one it cannot look up included, the answer is ``"c"``, ADR-0055 as it
     stands. Raises :class:`ValueError` for a target whose contracts are in
     no language, in more than one, or in one not in :data:`LANGUAGES`; what
-    building the entry raises passes unchanged.
+    building the entry raises passes unchanged. :mod:`hilclaw.targets` is
+    imported at the first call, not with this module, so that building the
+    tool registry, which imports this module, stays free of it.
     """
+    from hilclaw import targets
+
     try:
-        held = targets.target(accelerator, table)
+        held = targets.target(accelerator, targets.TABLE if table is None else table)
     except targets.NoTargetError:
         return LANGUAGES[0]
     languages = {key[3] for key in held.contracts}

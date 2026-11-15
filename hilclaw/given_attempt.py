@@ -75,7 +75,6 @@ from hilclaw import (
     layout,
     run_file_tools,
     run_files,
-    targets,
     tools,
 )
 
@@ -129,12 +128,12 @@ _DESCRIPTION = (
 _MEMBERS = ("run_id",)
 
 
-def given_name(accelerator, table=targets.TABLE):
+def given_name(accelerator, table=None):
     """Return the name of the file of the given code in a run whose ``accelerator`` is ``accelerator``.
 
     It is the entry of :data:`GIVEN_NAMES` for
     :func:`hilclaw.kernel_source.language_at` of ``accelerator`` and
-    ``table`` (ADR-0208 decision 2): ``given.cu`` for ``cuda_gpu``,
+    ``table``, by default :data:`hilclaw.targets.TABLE` (ADR-0208 decision 2): ``given.cu`` for ``cuda_gpu``,
     ``given.c`` for every other target and for a name ``table`` holds no
     target for. Raises what that function raises.
     """
