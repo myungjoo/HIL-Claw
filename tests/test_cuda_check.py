@@ -17,6 +17,7 @@ from hilclaw import (
     cuda_check,
     cuda_image,
     cuda_run,
+    kernel_source,
     local_run,
     standin_answer,
     standin_check,
@@ -223,6 +224,7 @@ def test_the_public_names_of_the_module():
         "check_parameters",
         "cuda_adapter",
         "cuda_image",
+        "kernel_source",
         "standin_answer",
         "standin_check",
         "standin_copies",
@@ -240,6 +242,7 @@ def test_the_public_names_of_the_module():
         "check_target",
         "check_sources",
         "check_keeper",
+        "compiled_sources",
         "container_image",
         "confirm_device",
         "select_sources",
@@ -250,7 +253,7 @@ def test_the_public_names_of_the_module():
 
 
 def test_the_module_reads_no_attempt_file_name_and_runs_nothing_on_the_host():
-    assert not {"kernel_source", "attempt_kernel"} & set(vars(cuda_check))
+    assert not {"attempt_kernel"} & set(vars(cuda_check))
     assert not {"clang_build", "local_run"} & set(vars(cuda_check))
     assert "HQ-0104" in cuda_check.__doc__
     assert "in containers" in cuda_check.__doc__
@@ -1064,3 +1067,77 @@ def test_a_device_lost_after_the_probe_is_a_run_failure(gpu, tmp_path, monkeypat
     monkeypatch.setattr(cuda_check, "run_process", without_the_gpus)
     result, _ = checked_on_the_gpu(tmp_path, "gemm.cu")
     assert (result["outcome"], result["condition"]) == ("broken", "exit_status")
+
+
+# The selection of an attempt's own output/ (ADR-0208 decisions 1 and 5)
+
+
+def output_holding(tmp_path, *names):
+    output = tmp_path / "attempt" / "output"
+    output.mkdir(parents=True)
+    for name in names:
+        (output / name).write_bytes(b"// kernel\n")
+    return output
+
+
+def test_compiled_sources_are_the_cu_files_in_byte_order(tmp_path):
+    output = output_holding(tmp_path, "b.cu", "a.cu", "c.c", "d.h", "e.txt")
+    assert cuda_check.compiled_sources(output) == (output / "a.cu", output / "b.cu")
+    assert cuda_check.select_sources(cuda_check.compiled_sources, output) == (
+        output / "a.cu",
+        output / "b.cu",
+    )
+
+
+def test_compiled_sources_of_given_cu(tmp_path):
+    output = output_holding(tmp_path, "given.cu")
+    assert cuda_check.compiled_sources(str(output)) == (output / "given.cu",)
+
+
+@pytest.mark.parametrize(
+    "names",
+    [(), ("given.c",), ("a.c", "a.h"), ("a.cpp", "A.cu")],
+    ids=["empty", "given-c", "c-and-header", "not-admitted"],
+)
+def test_compiled_sources_of_an_output_without_a_cu_file(tmp_path, names):
+    output = output_holding(tmp_path, *names)
+    assert cuda_check.compiled_sources(output) == ()
+    with pytest.raises(tools.ToolFailure) as raised:
+        cuda_check.select_sources(cuda_check.compiled_sources, output)
+    assert raised.value.kind == check_failure.KIND_NO_KERNEL_SOURCE
+
+
+@pytest.mark.parametrize("missing", ["attempt", "output"])
+def test_compiled_sources_without_the_attempt_or_its_output(tmp_path, missing):
+    attempt = tmp_path / "attempt"
+    if missing == "output":
+        attempt.mkdir()
+    assert cuda_check.compiled_sources(attempt / "output") == ()
+    with pytest.raises(tools.ToolFailure) as raised:
+        cuda_check.select_sources(cuda_check.compiled_sources, attempt / "output")
+    assert raised.value.kind == check_failure.KIND_NO_KERNEL_SOURCE
+
+
+def test_a_reader_failure_of_compiled_sources_is_kernel_source_unreadable(
+    tmp_path, monkeypatch
+):
+    output = output_holding(tmp_path, "a.cu")
+    real = os.listdir
+
+    def listdir(path):
+        if os.fspath(path) == os.fspath(output):
+            raise PermissionError(13, "denied")
+        return real(path)
+
+    monkeypatch.setattr(kernel_source.os, "listdir", listdir)
+    with pytest.raises(kernel_source.KernelSourceReadError):
+        cuda_check.compiled_sources(output)
+    with pytest.raises(tools.ToolFailure) as raised:
+        cuda_check.select_sources(cuda_check.compiled_sources, output)
+    assert raised.value.kind == check_failure.KIND_KERNEL_SOURCE_UNREADABLE
+    assert str(tmp_path) not in raised.value.message
+
+
+def test_compiled_sources_refuses_a_path_that_is_no_output(tmp_path):
+    with pytest.raises(kernel_source.InvalidOutputPathError):
+        cuda_check.compiled_sources(tmp_path / "attempt" / "out")

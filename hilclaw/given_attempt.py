@@ -2,9 +2,14 @@
 
 In a run whose ``instance.json`` (version 3) states ``given_code``, round 0
 makes no coder call: its one attempt ``(0, 1, 1)`` is the given code, whose
-``output/`` holds :data:`GIVEN_NAME` written from the blob after
+``output/`` holds one file written from the blob after
 :func:`hilclaw.cas.verify_blob` confirmed its hash, and which has no
-``spec.json`` (ADR-0200 decision 4 (a)). :func:`place` is that placement. The
+``spec.json`` (ADR-0200 decision 4 (a)). The file's name is
+:func:`given_name` of the ``accelerator`` of the run's hw_profile:
+:data:`GIVEN_NAME` (``given.c``), or ``given.cu`` at a target whose
+contracts are in the language ``cuda`` (``cuda_gpu``;
+``ARCHITECTURE/decisions/ADR-0208-od33-cuda-kernel-record-in-a-run.md``
+decision 2, after the owner's HQ-0104 (a)). :func:`place` is that placement. The
 command of ADR-0200 decision 5 calls it as a function, and the Round-Manager
 of a live turn calls it through the tool ``given.place`` that
 :func:`definition` returns.
@@ -44,8 +49,8 @@ that fails decides and nothing is written before the last:
    (ADR-0055 decision 6), :data:`KIND_GIVEN_CODE_TOO_LARGE`;
 6. the write: the attempt directory and its missing parents are created as
    the bring-in of a coder call creates them, then ``output/`` (a name taken
-   meanwhile is :data:`KIND_OUTPUT_EXISTS`), then :data:`GIVEN_NAME` as a new
-   file holding exactly the bytes of 5; any other :class:`OSError` is
+   meanwhile is :data:`KIND_OUTPUT_EXISTS`), then the file :func:`given_name`
+   names as a new file holding exactly the bytes of 5; any other :class:`OSError` is
    :data:`KIND_OUTPUT_NOT_WRITTEN`, and what was created before it stays,
    as after a failed bring-in.
 
@@ -66,14 +71,17 @@ from hilclaw import (
     coder_call,
     data_root_source,
     instance,
+    kernel_source,
     layout,
     run_file_tools,
     run_files,
     tools,
 )
 
-#: The name of the file of the given code in the attempt's ``output/`` (ADR-0200 decision 2).
-GIVEN_NAME = "given.c"
+#: The name of the file of the given code by the language of the run's target (ADR-0200 decision 2; ADR-0208 decision 2).
+GIVEN_NAMES = {"c": "given.c", "cuda": "given.cu"}
+#: The name of the file of the given code in the attempt's ``output/`` of a C kernel run (ADR-0200 decision 2).
+GIVEN_NAME = GIVEN_NAMES["c"]
 #: The tuple ``(round, candidate, attempt)`` of the given attempt (ADR-0200 decision 4 (a)).
 GIVEN_ATTEMPT = (0, 1, 1)
 
@@ -99,8 +107,9 @@ _DESCRIPTION = (
     "Place the given code of the run run_id as its round-0 attempt (round 0, "
     "candidate 1, attempt 1): the blob whose hash the run's instance.json "
     "states as given_code is verified and written as output/given.c of that "
-    "attempt. No spec is written and no coder is called. Call it in round 0 "
-    "of a run whose instance.json holds given_code, in place of the coder "
+    "attempt (output/given.cu in a run on the target cuda_gpu). No spec is "
+    "written and no coder is called. Call it in round 0 of a run whose "
+    "instance.json holds given_code, in place of the coder "
     'call. The result is {"given_code": the hash}. The data root is never '
     "part of the request; the tool knows it. It fails, checked in this "
     "order, with invalid_request for a request that is not exactly run_id; "
@@ -119,8 +128,22 @@ _DESCRIPTION = (
 _MEMBERS = ("run_id",)
 
 
+def given_name(accelerator, table=None):
+    """Return the name of the file of the given code in a run whose ``accelerator`` is ``accelerator``.
+
+    It is the entry of :data:`GIVEN_NAMES` for
+    :func:`hilclaw.kernel_source.language_at` of ``accelerator`` and
+    ``table``, by default :data:`hilclaw.targets.TABLE` (ADR-0208 decision 2): ``given.cu`` for ``cuda_gpu``,
+    ``given.c`` for every other target and for a name ``table`` holds no
+    target for. Raises what that function raises.
+    """
+    return GIVEN_NAMES[kernel_source.language_at(accelerator, table)]
+
+
 def place(data_root, run_id):
     """Place the given code of the run ``run_id`` below ``data_root`` as ``output/given.c`` of attempt ``(0, 1, 1)``.
+
+    The file is ``output/given.cu`` in a run on ``cuda_gpu`` (:func:`given_name`).
 
     ``data_root`` is a path; ``run_id`` is checked by
     :func:`hilclaw.layout.run_file` before the file system is touched, a
@@ -131,11 +154,11 @@ def place(data_root, run_id):
     created.
     """
     _, content = run_file_tools.read(data_root, run_id, "instance.json")
-    digest = _stated(run_id, content)
+    digest, accelerator = _stated(run_id, content)
     output = layout.attempt_artefact(data_root, run_id, *GIVEN_ATTEMPT, "output")
     _refuse_existing_output(data_root, output)
     data = _verified(data_root, digest)
-    _write(data_root, output, data)
+    _write(data_root, output, given_name(accelerator), data)
     return digest
 
 
@@ -201,7 +224,7 @@ def _stated(run_id, content):
             f"{file}: states no given_code (schema_version "
             f"{given.schema_version}); nothing was placed",
         )
-    return given.given_code
+    return given.given_code, given.instance.hw_profile["accelerator"]
 
 
 def _refuse_existing_output(data_root, output):
@@ -257,8 +280,8 @@ def _verified(data_root, digest):
     return data
 
 
-def _write(data_root, output, data):
-    target = output / GIVEN_NAME
+def _write(data_root, output, name, data):
+    target = output / name
     try:
         os.makedirs(output.parent, exist_ok=True)
         try:

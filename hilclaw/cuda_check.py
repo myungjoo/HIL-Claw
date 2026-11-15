@@ -54,28 +54,33 @@ incomplete report of the attempt's process is never a tool failure
 (ADR-0110 decision 3): a device lost after the probe went on is that
 process's ``"exit_status"`` (decision 6).
 
-**The kernel's files are the caller's.** Which files of an attempt's
-``output/`` a CUDA kernel is (a ``.cu`` name) is HQ-0104's question, which
-this module does not answer: :func:`hilclaw.kernel_source.read_compiled_set`
-admits no ``.cu`` name and is not used here. ``sources`` is a callable given
-by name with no default; it is called with the output path and returns the
+**The kernel's files are the caller's.** ``sources`` is a callable given by
+name with no default; it is called with the output path and returns the
 paths of the kernel's source files, which are copied into the build directory
 (:func:`hilclaw.standin_copies.place_selected_copies`) and handed to ``nvcc``
-there. A test gives a selection of a test-placed fixture; slice 6 gives the
-one HQ-0104's answer provides.
+there. A test gives a selection of a test-placed fixture.
+:func:`compiled_sources` is the selection of an attempt's own ``output/``
+(``ARCHITECTURE/decisions/ADR-0208-od33-cuda-kernel-record-in-a-run.md``
+decisions 1 and 5, after the owner's HQ-0104 (a)): the compiled set
+:func:`hilclaw.kernel_source.read_compiled_set` reads there in the language
+``cuda``, the ``.cu`` files in byte order of their names. Its headers are
+not handed on: the one way into a ``cuda_gpu`` attempt is the one-file
+bundle ``given.cu`` (ADR-0208 decision 2), which has none.
 
 **Only in containers.** The build and the process run only in containers of
 the named image (NFR-4; decision 7); nothing of the attempt runs on the host.
 :func:`hilclaw.check_definition.default_table` holds no ``cuda_gpu`` entry
-(slice 6), so a call about ``cuda_gpu`` through the default registry is
-``no_backend``.
+(ADR-0208 decision 5 leaves the entry, with :func:`compiled_sources` as its
+``sources``, to the next slice), so a call about ``cuda_gpu`` through the
+default registry is ``no_backend``.
 
 Choices that are this module's own and no rule of a record:
 
 * The device query is given :data:`DEVICE_QUERY_TIMEOUT_S`, its forced
   removal :data:`hilclaw.standin_check.REMOVAL_TIMEOUT_S`.
 * ``sources`` returns a ``tuple`` or ``list``; an empty one is
-  ``no_kernel_source`` (S1), a path that is not a regular file (a link
+  ``no_kernel_source`` (S1, what :func:`compiled_sources` answers for "no
+  kernel source"), a path that is not a regular file (a link
   included) ``build_input_missing`` (S5), and an :class:`Exception` it raises
   ``kernel_source_unreadable`` (S2). Another value, or an element that is no
   ``str`` or :class:`os.PathLike`, raises :class:`TypeError`.
@@ -90,7 +95,8 @@ Choices that are this module's own and no rule of a record:
   not an ``int`` from 0 to below ``2**64``.
 
 :func:`check_target`, :func:`check_sources`, :func:`check_keeper`,
-:func:`container_image`, :func:`confirm_device`, :func:`select_sources`,
+:func:`compiled_sources`, :func:`container_image`, :func:`confirm_device`,
+:func:`select_sources`,
 :func:`place_sources`, :func:`build_in_container` and :func:`run_process`
 are the steps this operation shares with the ``cuda_gpu`` operation of the
 run tools, :func:`hilclaw.cuda_run.operation_for`.
@@ -105,6 +111,7 @@ from hilclaw import (
     check_parameters,
     cuda_adapter,
     cuda_image,
+    kernel_source,
     standin_answer,
     standin_check,
     standin_copies,
@@ -211,6 +218,23 @@ def _checked(parameters, keeper, cap_s):
     if not 0 <= seed < _SEED_LIMIT:
         raise ValueError("seed must be an int from 0 to below 2**64")
     return tuple(str(int(value)) for value in (m, k, n, draws, seed)), limit
+
+
+def compiled_sources(output_path):
+    """Return the compiled set of the ``output/`` at ``output_path`` in the language ``cuda`` (ADR-0208 decisions 1 and 5).
+
+    The selection ``sources`` of :func:`operation_for` for an attempt's own
+    ``output/``: the ``compiled_set`` of
+    :func:`hilclaw.kernel_source.read_compiled_set` with ``language``
+    ``"cuda"``, the ``.cu`` kernel files in byte order of their names, and
+    an empty ``tuple`` for "no kernel source" of any of its cases, an
+    ``output/`` holding only ``.c`` or ``.h`` files included. Raises what
+    that function raises, :class:`hilclaw.kernel_source.KernelSourceReadError`
+    for a failure of the reader. Through :func:`select_sources`, the empty
+    answer is ``no_kernel_source`` and every raise ``kernel_source_unreadable``,
+    the kinds of the same two answers at ``cpu_standin`` (ADR-0056 decision 6).
+    """
+    return kernel_source.read_compiled_set(output_path, language="cuda").compiled_set
 
 
 def container_image():

@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import types
 
 import pytest
 
@@ -8,12 +9,14 @@ from hilclaw import (
     bring_in,
     cas,
     given_attempt,
+    kernel_source,
     keys,
     layout,
     mcp_front,
     run_files,
     standin_profile,
     start_instance,
+    targets,
     tools,
 )
 from hilclaw.given_attempt import (
@@ -28,6 +31,7 @@ from hilclaw.given_attempt import (
     KIND_OUTPUT_NOT_WRITTEN,
     NAME,
     definition,
+    given_name,
     place,
 )
 from hilclaw.tools import ToolFailure
@@ -462,3 +466,120 @@ def test_the_placed_bytes_hash_to_the_given_code(root):
     digest = place(root, run_id)
     data = (output_of(root, run_id) / GIVEN_NAME).read_bytes()
     assert hashlib.sha256(data).hexdigest() == digest
+
+
+# --- the name of the file by the run's target (ADR-0208 decision 2) ---
+
+CUDA_KERNEL = b'extern "C" void hilclaw_gemm(void) {}\n'
+CUDA_PROFILE = {
+    **PROFILE,
+    "accelerator": targets.CUDA_GPU,
+    "toolchain": {"nvcc": "test", "gcc": "test", "nvidia_driver": "test"},
+}
+
+
+def on_cuda_gpu(root, run_id):
+    document = instance_of(root, run_id)
+    document["hw_profile"] = {
+        "key": keys.hw_profile_key(CUDA_PROFILE).name,
+        "record": CUDA_PROFILE,
+    }
+    rewrite_instance(root, run_id, document)
+
+
+def test_the_names_by_language():
+    assert given_attempt.GIVEN_NAMES == {"c": "given.c", "cuda": "given.cu"}
+    assert GIVEN_NAME == given_attempt.GIVEN_NAMES["c"]
+
+
+@pytest.mark.parametrize(
+    ("accelerator", "name"),
+    [
+        (targets.CUDA_GPU, "given.cu"),
+        (targets.CPU_STANDIN, "given.c"),
+        (targets.VIRTUAL_NPU, "given.c"),
+        ("mock", "given.c"),
+        ("no_such", "given.c"),
+    ],
+)
+def test_given_name(accelerator, name):
+    assert given_name(accelerator) == name
+
+
+def test_given_name_reads_the_given_table():
+    table = {"x": targets.target(targets.CUDA_GPU)}
+    assert given_name("x", table) == "given.cu"
+    assert given_name(targets.CUDA_GPU, table) == "given.c"
+
+
+def test_given_name_refuses_a_target_without_one_known_language():
+    table = {
+        "x": types.SimpleNamespace(contracts=(("gemm", "fp32", "row_major", "rust"),))
+    }
+    with pytest.raises(ValueError):
+        given_name("x", table)
+
+
+def test_the_given_code_of_a_cuda_gpu_run_is_placed_as_given_cu(root):
+    run_id = started(root, code=CUDA_KERNEL)
+    on_cuda_gpu(root, run_id)
+    digest = instance_of(root, run_id)["given_code"]
+
+    assert place(root, run_id) == digest
+
+    output = output_of(root, run_id)
+    assert sorted(os.listdir(output)) == ["given.cu"]
+    assert (output / "given.cu").read_bytes() == CUDA_KERNEL
+    assert kernel_source.read_compiled_set(output, language="cuda").compiled_set == (
+        output / "given.cu",
+    )
+    assert (
+        kernel_source.read_compiled_set(output).missing
+        == kernel_source.NO_COMPILED_FILE
+    )
+
+
+def test_the_tool_places_given_cu_in_a_cuda_gpu_run(root):
+    run_id = started(root, code=CUDA_KERNEL)
+    on_cuda_gpu(root, run_id)
+    found = definition(lambda: root)
+
+    assert found.function({"run_id": run_id}) == {
+        "given_code": instance_of(root, run_id)["given_code"]
+    }
+    assert sorted(os.listdir(output_of(root, run_id))) == ["given.cu"]
+    assert "output/given.c " in found.description
+    assert "output/given.cu" in found.description
+    assert targets.CUDA_GPU in found.description
+
+
+def test_a_cuda_gpu_run_meets_the_same_refusals(root):
+    run_id = started(root, code=CUDA_KERNEL)
+    on_cuda_gpu(root, run_id)
+    place(root, run_id)
+    failure = refused(root, run_id, KIND_OUTPUT_EXISTS)
+    assert "given.cu" not in failure.message
+    assert sorted(os.listdir(output_of(root, run_id))) == ["given.cu"]
+
+
+def test_a_cuda_gpu_run_without_given_code_is_refused(root):
+    run_id = started(root, code=None)
+    on_cuda_gpu(root, run_id)
+    refused(root, run_id, KIND_GIVEN_CODE_NOT_STATED)
+    assert not (root / "runs" / run_id / "rounds").exists()
+
+
+def test_a_write_failure_in_a_cuda_gpu_run_names_given_cu(root, monkeypatch):
+    run_id = started(root, code=CUDA_KERNEL)
+    on_cuda_gpu(root, run_id)
+
+    def refuse(*args, **kwargs):
+        raise PermissionError(13, "denied")
+
+    monkeypatch.setattr(given_attempt.os, "open", refuse)
+    with pytest.raises(ToolFailure) as caught:
+        place(root, run_id)
+    assert caught.value.kind == KIND_OUTPUT_NOT_WRITTEN
+    assert caught.value.message.startswith(
+        f"runs/{run_id}/rounds/0000/coder/candidates/01/attempts/01/output/given.cu: "
+    )

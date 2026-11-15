@@ -637,3 +637,213 @@ def test_compiled_set_builds_with_clang_and_no_include_path(clang, output, tmp_p
         [str(elsewhere / "program")], cwd=elsewhere, timeout=60, check=False
     )
     assert run.returncode == 0
+
+
+# --- the language of the target (ADR-0208 decision 1) ---
+
+
+def test_the_languages():
+    assert kernel_source.LANGUAGES == ("c", "cuda")
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["a.cu", "gemm.cu", "0.cu", "a_b-c9.cu", "a" * 62 + ".cu", "com0.cu", "a.c", "a.h"],
+)
+def test_cu_names_are_admitted_in_the_language_cuda(name):
+    assert is_admitted_name(name, language="cuda")
+
+
+@pytest.mark.parametrize("name", ["a.cu", "gemm.cu", "a" * 62 + ".cu"])
+@pytest.mark.parametrize("language", [None, "c"])
+def test_cu_names_are_not_admitted_in_the_language_c(name, language):
+    if language is None:
+        assert not is_admitted_name(name)
+    else:
+        assert not is_admitted_name(name, language=language)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "a.CU",
+        "A.cu",
+        ".cu",
+        "_a.cu",
+        "-a.cu",
+        "a" * 63 + ".cu",
+        "a.cuh",
+        "a.cpp",
+        "a.c.cu",
+        "a.cu ",
+        "a.u",
+    ],
+)
+def test_names_that_are_not_admitted_in_the_language_cuda(name):
+    assert not is_admitted_name(name, language="cuda")
+
+
+@pytest.mark.parametrize("stem", RESERVED_STEMS)
+def test_reserved_stems_are_not_admitted_as_cu_names(stem):
+    assert not is_admitted_name(f"{stem}.cu", language="cuda")
+    assert not is_admitted_name(f"{stem}.c", language="cuda")
+
+
+@pytest.mark.parametrize("value", [None, b"a.cu", 1, Path("a.cu")])
+def test_a_value_that_is_not_a_str_is_not_admitted_in_the_language_cuda(value):
+    assert is_admitted_name(value, language="cuda") is False
+
+
+@pytest.mark.parametrize(
+    ("language", "error"),
+    [
+        ("C", ValueError),
+        ("cpp", ValueError),
+        ("", ValueError),
+        (None, TypeError),
+        (b"c", TypeError),
+    ],
+)
+def test_an_unknown_language_is_refused_by_both(output, language, error):
+    write(output, "a.c")
+    with pytest.raises(error):
+        is_admitted_name("a.c", language=language)
+    with pytest.raises(error):
+        read_compiled_set(output, language=language)
+
+
+def test_an_unknown_language_is_refused_before_the_path_is_looked_at(monkeypatch):
+    monkeypatch.setattr(kernel_source.os, "listdir", lambda path: pytest.fail("listed"))
+    with pytest.raises(ValueError):
+        read_compiled_set("no/such/output", language="rust")
+    with pytest.raises(ValueError):
+        read_compiled_set(1, language="rust")
+
+
+def test_the_compiled_set_in_the_language_cuda_is_the_cu_files(output):
+    write(output, "b.cu", "a.cu", "c.c", "d.h", "e.txt", "A.cu")
+    answer = read_compiled_set(output, language="cuda")
+    assert answer == KernelSource(
+        (output / "a.cu", output / "b.cu"), None, (output / "d.h",)
+    )
+
+
+def test_the_same_output_in_the_language_c(output):
+    write(output, "b.cu", "a.cu", "c.c", "d.h")
+    assert read_compiled_set(output) == KernelSource(
+        (output / "c.c",), None, (output / "d.h",)
+    )
+    assert read_compiled_set(output, language="c") == read_compiled_set(output)
+
+
+@pytest.mark.parametrize(
+    "names",
+    [("a.c",), ("a.c", "b.h"), ("a.h",), ("a.cpp", "b.CU")],
+    ids=["c", "c-and-header", "header", "not-admitted"],
+)
+def test_an_output_without_a_cu_file_has_no_kernel_source_in_the_language_cuda(
+    output, names
+):
+    write(output, *names)
+    assert read_compiled_set(output, language="cuda") == KernelSource(
+        (), NO_COMPILED_FILE
+    )
+
+
+def test_only_cu_files_have_no_kernel_source_in_the_language_c(output):
+    write(output, "a.cu", "b.h")
+    assert read_compiled_set(output) == KernelSource((), NO_COMPILED_FILE)
+
+
+def test_the_other_answers_are_the_same_in_the_language_cuda(tmp_path, attempt):
+    assert read_compiled_set(
+        tmp_path / "x" / "output", language="cuda"
+    ) == KernelSource((), NO_ATTEMPT_DIRECTORY)
+    assert read_compiled_set(attempt / "output", language="cuda") == KernelSource(
+        (), NO_OUTPUT_DIRECTORY
+    )
+    with pytest.raises(InvalidOutputPathError):
+        read_compiled_set(attempt / "out", language="cuda")
+
+
+def test_a_reader_failure_in_the_language_cuda(monkeypatch, output):
+    fake_listing(monkeypatch, {output: PermissionError(13, "denied")})
+    with pytest.raises(KernelSourceReadError) as caught:
+        read_compiled_set(output, language="cuda")
+    assert caught.value.failure == OUTPUT_DIRECTORY_UNLISTABLE
+
+
+def test_a_link_and_a_directory_named_cu_are_no_kernel_file(output, tmp_path):
+    (output / "a.cu").mkdir()
+    real = tmp_path / "real.cu"
+    real.write_text("x", encoding="ascii")
+    symlink(output / "b.cu", real)
+    assert read_compiled_set(output, language="cuda") == KernelSource(
+        (), NO_COMPILED_FILE
+    )
+
+
+def test_cu_files_are_in_byte_order_whatever_the_listing(monkeypatch, output):
+    write(output, "b.cu", "a-b.cu", "a.cu", "a_b.cu")
+    fake_listing(monkeypatch, {output: ["b.cu", "a_b.cu", "a.cu", "a-b.cu"]})
+    assert names_of(read_compiled_set(output, language="cuda")) == [
+        "a-b.cu",
+        "a.cu",
+        "a_b.cu",
+        "b.cu",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("accelerator", "language"),
+    [("cuda_gpu", "cuda"), ("cpu_standin", "c"), ("virtual_npu", "c")],
+)
+def test_language_at_a_target_of_the_table(accelerator, language):
+    assert kernel_source.language_at(accelerator) == language
+
+
+@pytest.mark.parametrize("accelerator", ["mock", "no_such", "", None, [], 1])
+def test_language_at_a_name_without_a_target_is_c(accelerator):
+    assert kernel_source.language_at(accelerator) == "c"
+
+
+def test_language_at_reads_the_given_table():
+    from hilclaw import targets
+
+    table = {
+        "x": targets.target(targets.CUDA_GPU),
+        "y": targets.target(targets.CPU_STANDIN),
+    }
+    assert kernel_source.language_at("x", table) == "cuda"
+    assert kernel_source.language_at("y", table) == "c"
+    assert kernel_source.language_at(targets.CUDA_GPU, table) == "c"
+
+
+def test_language_at_refuses_a_target_without_one_known_language():
+    import dataclasses
+    import types
+
+    from hilclaw import targets
+
+    standin = targets.target(targets.CPU_STANDIN)
+    gpu = targets.target(targets.CUDA_GPU)
+    mixed = tuple(key for key in standin.contracts if key[:3] != gpu.contracts[0][:3])
+    table = {
+        "none": dataclasses.replace(standin, contracts=()),
+        "mixed": dataclasses.replace(standin, contracts=mixed + gpu.contracts),
+        "unknown": types.SimpleNamespace(
+            contracts=(("gemm", "fp32", "row_major", "rust"),)
+        ),
+    }
+    for name in table:
+        with pytest.raises(ValueError):
+            kernel_source.language_at(name, table)
+
+
+def test_language_at_lets_a_refused_entry_pass():
+    class Table(dict):
+        def __getitem__(self, name):
+            raise RuntimeError("built badly")
+
+    with pytest.raises(RuntimeError):
+        kernel_source.language_at("x", Table(x=None))

@@ -94,7 +94,14 @@ hold by the rule of version 2 and whose absence states ``c_kernel``
 version; :func:`parse_given`, :func:`validate_given`, :func:`read_given` and
 :func:`given_code_of` read versions 1, 2 and 3 (decision 7), and so do
 :func:`layout_version_of_kinded` and :func:`read_as_version_1`, which the
-run-level readers of its reader table use (slice 3a). This
+run-level readers of its reader table use (slice 3a).
+``ARCHITECTURE/decisions/ADR-0208-od33-cuda-kernel-record-in-a-run.md``
+decision 3, after the owner's HQ-0104 (a), reads a file that states no
+``candidate_kind`` as a kernel in the language of the contracts of the
+target its ``hw_profile`` names (:func:`hilclaw.kernel_source.language_at`:
+CUDA C++ at ``cuda_gpu``, C elsewhere). The name the readers return for it
+stays ``c_kernel``, the value the absence states, at every target; no
+reader here looks at the target, and none of their answers changes. This
 module is those rules: :func:`parse` and :func:`validate` are pure functions of
 the bytes of a content and of a parsed document, and :func:`read`,
 :func:`hw_profile_of`, :func:`tolerance_of`, :func:`source_commit_of`,
@@ -807,7 +814,8 @@ class Kinded(NamedTuple):
 
     ``schema_version`` is 1 or 2. ``candidate_kind`` is the member of that
     name of a version-2 file, or ``"c_kernel"`` for a version-1 file, which
-    states no kind. ``layout_version`` is the layout version the file states,
+    states no kind: a kernel in the language of the run's target
+    (ADR-0208 decision 3). ``layout_version`` is the layout version the file states,
     1 for both versions. ``instance`` is the :class:`Instance` of the other
     members, read by the rules of version 1; its ``others`` never holds
     ``candidate_kind``.
@@ -824,7 +832,9 @@ class Given(NamedTuple):
 
     ``schema_version`` is 1, 2 or 3. ``candidate_kind`` is the member of that
     name, or ``"c_kernel"`` for a file that states no kind (version 1, and
-    version 3 without the member). ``given_code`` is the member of that name
+    version 3 without the member), at every target: a kernel in the language
+    of the run's target, CUDA C++ in a run on ``cuda_gpu`` (ADR-0208
+    decision 3). ``given_code`` is the member of that name
     of a version-3 file, the SHA-256 hex digest of the blob of the given
     code, or ``None`` for a file of version 1 or 2, which states none.
     ``layout_version`` is the layout version the file states, 1 for the three
@@ -1131,7 +1141,8 @@ def candidate_kind_of(data_root, run_id):
 
     It is the ``candidate_kind`` of what :func:`read_kinded` returns: the
     member of a version-2 file, or ``"c_kernel"`` for a version-1 file, which
-    states no kind. Raises what :func:`read_kinded` raises, so no kind is
+    states no kind, read as a kernel in the language of the run's target
+    (ADR-0208 decision 3). Raises what :func:`read_kinded` raises, so no kind is
     returned, and none is inferred, for a missing, unreadable or invalid file
     or one of a version other than 1 and 2.
     """
