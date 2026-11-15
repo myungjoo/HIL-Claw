@@ -108,7 +108,9 @@ _DEVICE_CONTAINER_FAILED = (
 _DEVICE_NOT_IN_IMAGE = (
     "the device query program was not found or could not be started in the image"
 )
-_DEVICE_NOT_STARTED = "the device query's container could not be started"
+_DEVICE_NOT_STARTED = (
+    "the device query's container client could not be started or failed"
+)
 _CLIENT_FAILED = 125
 _NOT_IN_IMAGE = (126, 127)
 _DEVICE_FAILED = {
