@@ -132,3 +132,38 @@ If an owner-only part appears, write it in `## Result` as an HQ in the DRIVER §
 ## Follow-ups
 
 ## Result
+
+DONE — PR #390 (squash-merge commit: see the PR). Review rounds: see the PR (round 1 Request changes: restored T-0575's unchanged `select_sources` tests, listed two missed changed tests, fixed a `cuda_adapter` docstring line). No HQ. No new RuntimeAcceptance item.
+
+**Machine check (criterion 1; WSL2 Ubuntu 22.04, kernel 6.18.58.1-microsoft-standard-WSL2, 2026-11-15 ~11:19Z)**
+- `docker info`: Docker Engine 29.1.3; runtimes `io.containerd.runc.v2 nvidia runc`, default `runc` (the `nvidia` runtime present). `nvidia-ctk` 1.19.0.
+- `docker image ls cuda`: `cuda:13.1.2`, id `1efffc671e20` (`sha256:1efffc671e20f111753d134230188163113cbf3e263f85df66d55f31b99afc1f`), RepoDigest `nvidia/cuda@sha256:d8332c008e2ef270e82d286e5245e771f839645683075bba21ad9e4fa59dbcbb`, 6.95 GB — T-0576's record, unchanged.
+- Inside `cuda:13.1.2`: `nvcc` "Cuda compilation tools, release 13.1, V13.1.115" (Build cuda_13.1.r13.1/compiler.37061995_0); `gcc (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0`.
+- Host `nvidia-smi`: NVIDIA GeForce RTX 4070, 12282 MiB, driver 615.78.02 / KMD 617.14, CUDA UMD 13.4.
+- Nothing installed or pulled by this task.
+
+**Change**
+- `hilclaw/cuda_check.py`: the operation now runs image (`HILCLAW_CUDA_IMAGE`; none named = `standin_answer.read_image_value`'s C1 `compiler_unavailable`, `cuda_image.ImageRefusedError` = C2 `compiler_unavailable`) -> build directory -> probe container (`cuda_adapter.check_device_in_container`, `device_unavailable`) -> selection and copies -> `nvcc` build container -> process container, all with `--gpus all`, through `standin_check.carry_out` (build directory removed where every container, the probe's included, allows it). Public steps: `container_image`, `confirm_device(image, build_dir, outcomes)`, `select_sources` (unchanged), `place_sources`, `build_in_container`, `run_process`; T-0575's host `confirm_device()`, `build_executable` and `carry_out` are removed. `sources` stays a required keyword with no default; no `.cu` reading anywhere (HQ-0104).
+- `hilclaw/cuda_run.py`: the same order with the timing driver, then the waiter (`standin_run.WAITER_SOURCE`) built by `nvcc` at `waiter_flags` in its own build container within what is left of the build limit, then the timing process under the waiter in a `--gpus all` process container, read by `standin_answer.read_timing_process` (form (A) `(report, memory_bytes)` with the waiter's host figure, or `time_limit`/`exit_status`). One operation for both tools; no member added.
+- `hilclaw/standin_copies.py`: new `place_selected_copies(sources, harness_program, build_dir)` (caller-selected files below `kernel/` under their basenames, the harness beside them); `place_copies` unchanged.
+- `hilclaw/standin_check.py`: `run_build(..., compiler=COMPILER, gpus=False)`, `run_container(..., gpus=False)`; the defaults keep every `cpu_standin` command byte-for-byte (a test asserts no `--gpus` and `clang` by default).
+- `hilclaw/cuda_adapter.py`: `check_device_in_container(..., outcomes=None)` appends what the probe container returned or raised (for ADR-0168 decision 5); a non-list is `TypeError` with `parameter` `"outcomes"`. Module docstring line on `check_device` corrected.
+- `check_definition.default_table` unchanged (a `cuda_gpu` call through it stays `no_backend`, tested).
+- Choice of this slice, inside ADR-0207: no candidate build is read at `cuda_gpu` (T-0575's choice kept; `coder_loop` is false there), so `report_build` is not applied; the build answers are `run_build`/`settled`'s.
+- Test-side note: `tests/cuda_fixtures/gemm_wrong.cu` is `#define GEMM_WRONG 1` + `#include "gemm.cu"`; a copy into the build directory does not carry the include, so the real-GPU test composes the wrong kernel into one file in its own output directory (fixtures unchanged).
+- Language: Python (the modules extended and their callers). Size: about 330 non-test lines changed across 5 modules (D30 recommendation kept); 10 files including tests.
+
+**Verification**
+- Full suite in a WSL2 clone of the branch with `/usr/local/cuda/bin` on `PATH`, under `coverage run --source=hilclaw`: 42792 passed, 108 skipped (722 s). `hilclaw/` lines 19184/19249 (99.7%), functions 1816/1818. That run was before the round-1 fixes; after them the touched and neighbouring test files (`test_cuda_check`, `test_cuda_run`, `test_cuda_adapter`, `test_standin_check`, `test_standin_copies`, `test_standin_run`, `test_cuda_image`, `test_standin_container`) passed again (985, real-GPU tests included, none skipped) with `cuda_check`, `cuda_run`, `cuda_adapter`, `standin_check`, `standin_copies`, `standin_container` at 100% lines. `ruff check` and `ruff format --check` clean.
+- Real GPU (FR-19 (5); RTX 4070, driver 617.14, toolkit 1.19.0, image `cuda:13.1.2` with nvcc 13.1 V13.1.115 and gcc 11.4.0; `HILCLAW_CUDA_IMAGE=cuda:13.1.2`; a backend table built in the test with `Backend("cuda_gpu", {...})`, calls through `check_operation.ask` and `run_operation.ask`):
+  - `gemm.cu`: `correctness.check` `pass` at 5x33x7 and 8x8x8; `sim.run` and `board.run` each a `Reported` accepted by `timing.judge_report` (interval form, 20 samples, `resolution_ns 1`, intervals about 30 to 80 us at 5x33x7), `memory_bytes` about 110 MB (110317568 and 110391296 in one hand run: the host process's peak RSS through the waiter);
+  - `gemm_wrong.cu` (composed): `fail`;
+  - `broken.cu`: broken `build_exit_status`, log kept ("/build/kernel/broken.cu(1): error: expected a \")\"");
+  - `gemm_exit.cu`: broken `exit_status` (check, `sim.run`, `board.run`);
+  - device lost after the probe (process container started without `--gpus`): broken `exit_status`.
+- Skips: the real-GPU tests skip with a stated reason without a POSIX host, `docker`, the image in the local store, or a GPU visible in a probe container (CI skips them).
+- No `claude` was started (D16); no test run (D25).
+
+**Runtime acceptance items (D22).** None new; RA-0086 already holds ADR-0207's container items.
+
+**Storage.** Task directories (WSL `/tmp/hilclaw-driver/T-0577/` with the clone, coverage data and smoke script; Git Bash `/tmp/hilclaw-driver/T-0577/` with the PR body) removed with `rm -r` at the end. No work image was made. Kept: tool image `cuda:13.1.2`.

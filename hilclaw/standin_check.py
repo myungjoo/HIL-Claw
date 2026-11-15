@@ -506,9 +506,23 @@ def _build(target, image, build_dir, copies, keeper, outcomes):
 
 
 def run_build(
-    outcomes, image, build_dir, command, timeout_s, *, keeper, executable, missing
+    outcomes,
+    image,
+    build_dir,
+    command,
+    timeout_s,
+    *,
+    keeper,
+    executable,
+    missing,
+    compiler=COMPILER,
+    gpus=False,
 ):
-    """Run :data:`COMPILER` with ``command`` in one build container and read it.
+    """Run ``compiler`` with ``command`` in one build container and read it.
+
+    ``compiler`` defaults to :data:`COMPILER`; ``gpus`` is handed to
+    :func:`run_container` (the ``cuda_gpu`` operations give ``nvcc`` and
+    ``True``, ADR-0207 decision 7).
 
     Returns :data:`hilclaw.standin_answer.GO_ON` when the build ended with
     status 0 and left a regular file ``executable`` directly in
@@ -520,7 +534,14 @@ def run_build(
     such file (S9), and as :func:`run_container` and :func:`settled` do.
     """
     result = run_container(
-        outcomes, standin_answer.BUILD, image, build_dir, COMPILER, command, timeout_s
+        outcomes,
+        standin_answer.BUILD,
+        image,
+        build_dir,
+        compiler,
+        command,
+        timeout_s,
+        gpus=gpus,
     )
     if type(result) is str:
         return result
@@ -550,13 +571,15 @@ def run_container(
     *,
     stdin_data=None,
     memory_limit_bytes=None,
+    gpus=False,
 ):
     """Run ``program`` in one container, give its forced removal :data:`REMOVAL_TIMEOUT_S`, and place what it raised.
 
-    ``stdin_data`` and ``memory_limit_bytes`` are handed to
+    ``stdin_data``, ``memory_limit_bytes`` and ``gpus`` are handed to
     :func:`hilclaw.standin_container.run_in_container` as they are: ``None``,
-    the default of each, leaves the container's standard input the null
-    device and gives no memory bound. The operations hand a target's
+    the default of the first two, leaves the container's standard input the
+    null device and gives no memory bound, and ``False``, that of ``gpus``,
+    adds no GPU option. The operations hand a target's
     ``memory_limit_bytes`` to each process container and to no build
     container (ADR-0193 decision 4).
 
@@ -578,6 +601,7 @@ def run_container(
                 removal_timeout_s=REMOVAL_TIMEOUT_S,
                 stdin_data=stdin_data,
                 memory_limit_bytes=memory_limit_bytes,
+                gpus=gpus,
             )
         except BaseException as error:
             outcomes.append(error)

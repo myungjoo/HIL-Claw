@@ -1,8 +1,7 @@
 import dataclasses
-import json
 import os
 import shutil
-import sys
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -14,10 +13,16 @@ from hilclaw import (
     check_definition,
     check_failure,
     check_operation,
-    clang_build,
     cuda_adapter,
     cuda_check,
+    cuda_image,
     cuda_run,
+    local_run,
+    standin_answer,
+    standin_check,
+    standin_container,
+    standin_copies,
+    standin_settings,
     targets,
     tools,
     vendor_adapter,
@@ -25,83 +30,127 @@ from hilclaw import (
 from hilclaw.check_parameters import Bf16CheckParameters, CheckParameters
 from hilclaw.harness import cuda_programs
 from hilclaw.keys import SCHEMA_VERSION
-from hilclaw.vendor_adapter import PRESENT
 
 FIXTURES = Path(__file__).resolve().parent / "cuda_fixtures"
 TOOL = "correctness.check"
+IMAGE = "registry.example/cuda:1"
+REAL_IMAGE = "cuda:13.1.2"
 PARAMETERS = CheckParameters(seed=987654321, draws=2, m=5, k=33, n=7)
 TOLERANCE = {"rtol": 1e-4, "atol": 1e-4}
-REPORT = "a report of the stub program\n"
+REPORT = b"a report of the stub program\n"
+BUILD_STDOUT = b"compiled\n"
+BUILD_STDERR = b"kernel.cu(1): warning: unused\n"
+DEVICE_LINE = b"Stub GPU, 1.0\n"
+INSIDE = standin_container.CONTAINER_BUILD_DIR
+ISOLATION = [
+    "--network",
+    "none",
+    "--pull",
+    "never",
+    "--cap-drop",
+    "ALL",
+    "--security-opt",
+    "no-new-privileges=true",
+    "--entrypoint=",
+]
 LIMIT = 300
-posix_only = pytest.mark.skipif(os.name != "posix", reason="stub programs are POSIX")
-
-STUB = """#!{python}
-import json, os, pathlib, sys, time
-here = pathlib.Path(__file__).resolve().parent
-name = pathlib.Path(sys.argv[0]).name
-with open(here / "calls.ndjson", "a", encoding="utf-8") as log:
-    log.write(json.dumps([name, *sys.argv[1:]]) + "\\n")
-conf = json.loads((here / (name + ".json")).read_text(encoding="utf-8"))
-sys.stdout.write(conf.get("stdout", ""))
-sys.stderr.write(conf.get("stderr", ""))
-sys.stdout.flush()
-if "program" in conf:
-    out = pathlib.Path(sys.argv[sys.argv.index("-o") + 1])
-    out.write_text(conf["program"].format(python=sys.executable, here=here))
-    out.chmod(conf.get("mode", 0o755))
-time.sleep(conf.get("sleep", 0))
-sys.exit(conf.get("status", 0))
-"""
-
-PROGRAM = """#!{python}
-import json, pathlib, sys, time
-here = pathlib.Path("{here}")
-with open(here / "calls.ndjson", "a", encoding="utf-8") as log:
-    log.write(json.dumps(["program", *sys.argv]) + "\\n")
-time.sleep(%(sleep)s)
-sys.stdout.write(%(stdout)r)
-sys.exit(%(status)s)
-"""
 
 
-def program(stdout=REPORT, status=0, sleep=0):
-    return PROGRAM % {"stdout": stdout, "status": status, "sleep": sleep}
+def run_result(command, returncode=0, *, timed_out=False, stdout=b"", stderr=b""):
+    return local_run.RunResult(
+        returncode=None if timed_out else returncode,
+        timed_out=timed_out,
+        stdout=stdout,
+        stderr=stderr,
+        command=tuple(command),
+        duration_s=0.5,
+        max_rss=None,
+    )
 
 
-class Stubs:
-    def __init__(self, directory):
-        self.directory = directory
-
-    def set(self, name, **conf):
-        path = self.directory / name
-        path.write_text(STUB.format(python=sys.executable), encoding="utf-8")
-        path.chmod(0o755)
-        (self.directory / f"{name}.json").write_text(json.dumps(conf), encoding="utf-8")
-
-    def remove(self, name):
-        (self.directory / name).unlink()
-
-    def calls(self):
-        log = self.directory / "calls.ndjson"
-        if not log.exists():
-            return []
-        return [
-            json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()
-        ]
-
-    def names(self):
-        return [call[0] for call in self.calls()]
+def mount_source(command):
+    option = command[command.index("--mount") + 1]
+    fields = dict(field.split("=", 1) for field in option.split(","))
+    return fields["source"]
 
 
-@pytest.fixture
-def stubs(tmp_path, monkeypatch):
-    directory = tmp_path / "bin"
-    directory.mkdir()
-    monkeypatch.setenv("PATH", str(directory))
-    found = Stubs(directory)
-    found.set("nvidia-smi", stdout="Stub GPU, 1.0\n")
-    found.set("nvcc", program=program())
-    return found
+def inner(command):
+    return command[command.index(IMAGE) + 1 :]
+
+
+def ended(returncode, stdout=b"", stderr=b""):
+    return lambda command: run_result(command, returncode, stdout=stdout, stderr=stderr)
+
+
+def timed_out(stdout=b"partial", stderr=b" output"):
+    return lambda command: run_result(
+        command, timed_out=True, stdout=stdout, stderr=stderr
+    )
+
+
+def raises(error):
+    def act(command):
+        raise error
+
+    return act
+
+
+def probed(stdout=DEVICE_LINE):
+    return ended(0, stdout=stdout)
+
+
+def built(name=cuda_check.EXECUTABLE_NAME, *, executable=True, seen=None):
+    def act(command):
+        directory = mount_source(command)
+        if seen is not None:
+            for root, _, files in os.walk(directory):
+                for file in files:
+                    path = os.path.join(root, file)
+                    with open(path, "rb") as opened:
+                        seen[os.path.relpath(path, directory)] = opened.read()
+        if executable:
+            with open(os.path.join(directory, name), "wb") as file:
+                file.write(b"\x7fELF")
+        return run_result(command, 0, stdout=BUILD_STDOUT, stderr=BUILD_STDERR)
+
+    return act
+
+
+def reported(report=REPORT):
+    return ended(0, stdout=report, stderr=b"process said something")
+
+
+class Client:
+    def __init__(self):
+        self.calls = []
+        self.script = []
+
+    def __call__(self, command, **options):
+        command = list(command)
+        self.calls.append((command, options))
+        if command[1] == "rm" and (not self.script or self.script[0] is None):
+            if self.script:
+                self.script.pop(0)
+            return run_result(command, 0)
+        return self.script.pop(0)(command)
+
+    def runs(self):
+        return [command for command, _ in self.calls if command[1] == "run"]
+
+    def options(self):
+        return [options for command, options in self.calls if command[1] == "run"]
+
+
+@pytest.fixture(autouse=True)
+def client(request, monkeypatch, tmp_path):
+    if "gpu" in request.fixturenames:
+        return None
+    stub = Client()
+    monkeypatch.setattr(local_run, "run", stub)
+    monkeypatch.setattr(os, "getuid", lambda: 1234, raising=False)
+    monkeypatch.setattr(os, "getgid", lambda: 567, raising=False)
+    monkeypatch.setenv(cuda_image.ENV_IMAGE, IMAGE)
+    return stub
 
 
 @pytest.fixture
@@ -109,6 +158,7 @@ def build_root(tmp_path, monkeypatch):
     root = tmp_path / "temporary"
     root.mkdir()
     monkeypatch.setattr(tempfile, "tempdir", str(root))
+    monkeypatch.setattr(standin_check, "REMOVE_PAUSES_S", (0.0, 0.0))
     return root
 
 
@@ -140,7 +190,24 @@ def failure_of(op, kind, **kwargs):
     with pytest.raises(tools.ToolFailure) as raised:
         call(op, **kwargs)
     assert raised.value.kind == kind
+    assert type(raised.value.message) is str and raised.value.message
+    for shown in (IMAGE, "hilclaw-cuda", "warning", "partial", "Stub GPU"):
+        assert shown not in raised.value.message
     return raised.value
+
+
+def assert_gpu_containers(client):
+    for command in client.runs():
+        assert command[command.index(IMAGE) - 3 : command.index(IMAGE) - 1] == [
+            "--gpus",
+            "all",
+        ]
+        for option in ISOLATION:
+            assert option in command
+        assert command[command.index("--workdir") + 1] == INSIDE
+        assert command[command.index("--user") + 1] == "1234:567"
+        assert "--privileged" not in command and "--env" not in command
+        assert command.count("--mount") == 1
 
 
 # The module
@@ -152,12 +219,13 @@ def test_the_public_names_of_the_module():
         "os",
         "stat",
         "build_log",
-        "check_build",
         "check_failure",
         "check_parameters",
-        "clang_build",
         "cuda_adapter",
+        "cuda_image",
+        "standin_answer",
         "standin_check",
+        "standin_copies",
         "standin_settings",
         "targets",
         "tools",
@@ -172,17 +240,21 @@ def test_the_public_names_of_the_module():
         "check_target",
         "check_sources",
         "check_keeper",
+        "container_image",
         "confirm_device",
         "select_sources",
-        "build_executable",
-        "carry_out",
+        "place_sources",
+        "build_in_container",
+        "run_process",
     }
 
 
-def test_the_module_reads_no_attempt_file_name():
+def test_the_module_reads_no_attempt_file_name_and_runs_nothing_on_the_host():
     assert not {"kernel_source", "attempt_kernel"} & set(vars(cuda_check))
+    assert not {"clang_build", "local_run"} & set(vars(cuda_check))
     assert "HQ-0104" in cuda_check.__doc__
-    assert "test-only" in cuda_check.__doc__
+    assert "in containers" in cuda_check.__doc__
+    assert "test-only" not in cuda_check.__doc__
 
 
 def test_the_default_table_has_no_cuda_gpu_entry():
@@ -202,7 +274,7 @@ def test_the_default_table_has_no_cuda_gpu_entry():
         assert raised.value.kind == tools.KIND_NO_BACKEND
 
 
-# operation_for
+# operation_for and its argument checks
 
 
 def test_operation_for_refuses_a_target_that_is_no_target(kernel):
@@ -231,7 +303,6 @@ def test_check_target_check_sources_and_check_keeper_pass_good_values():
         cuda_check.check_keeper(object())
 
 
-@posix_only
 @pytest.mark.parametrize(
     ("parameters", "keeper", "error"),
     [
@@ -247,7 +318,7 @@ def test_check_target_check_sources_and_check_keeper_pass_good_values():
     ],
 )
 def test_refused_arguments_start_nothing(
-    stubs, build_root, kernel, parameters, keeper, error
+    client, build_root, kernel, parameters, keeper, error
 ):
     selected = []
     op = cuda_check.operation_for(
@@ -261,91 +332,264 @@ def test_refused_arguments_start_nothing(
             "out",
             build_log.LogKeeper() if keeper is None else keeper,
         )
-    assert stubs.calls() == [] and selected == []
+    assert client.calls == [] and selected == []
     assert list(build_root.iterdir()) == []
 
 
-# The device check
+# The image (C1, C2)
 
 
-@posix_only
-@pytest.mark.parametrize(
-    "conf",
-    [
-        {"status": 6, "stderr": "No devices were found\n"},
-        {"status": 9},
-        {"status": 12},
-        {"status": 0, "stdout": "no line it reads\n"},
-        {"status": 4},
-    ],
-    ids=["no-device", "no-driver", "no-nvml", "unreadable", "other-status"],
-)
-def test_no_usable_device_is_device_unavailable_before_anything_else(
-    stubs, build_root, kernel, conf
+def test_container_image_returns_the_named_image():
+    assert cuda_check.container_image() == IMAGE
+
+
+@pytest.mark.parametrize("value", [None, "", "-refused", "two words"])
+def test_no_image_or_a_refused_one_is_compiler_unavailable_before_anything(
+    monkeypatch, client, build_root, kernel, value
 ):
-    stubs.set("nvidia-smi", **conf)
+    if value is None:
+        monkeypatch.delenv(cuda_image.ENV_IMAGE)
+    else:
+        monkeypatch.setenv(cuda_image.ENV_IMAGE, value)
+    keeper = build_log.LogKeeper()
+    failure_of(
+        operation(kernel), check_failure.KIND_COMPILER_UNAVAILABLE, keeper=keeper
+    )
+    assert client.calls == [] and keeper.held() is None
+    assert list(build_root.iterdir()) == []
+
+
+def test_the_standin_image_variable_is_not_read(
+    monkeypatch, client, build_root, kernel
+):
+    monkeypatch.delenv(cuda_image.ENV_IMAGE)
+    monkeypatch.setenv("HILCLAW_STANDIN_IMAGE", IMAGE)
+    failure_of(operation(kernel), check_failure.KIND_COMPILER_UNAVAILABLE)
+    assert client.calls == []
+
+
+def test_container_image_lets_pass_what_it_does_not_place(monkeypatch):
+    def read_image():
+        raise LookupError("not placed")
+
+    monkeypatch.setattr(cuda_image, "read_image", read_image)
+    with pytest.raises(LookupError):
+        cuda_check.container_image()
+
+
+# The whole call with the stub client
+
+
+def test_a_built_program_is_run_in_three_gpu_containers(client, build_root, kernel):
+    client.script = [probed(), built(), reported()]
+    keeper = build_log.LogKeeper()
+    assert call(operation(kernel), keeper=keeper) == REPORT
+    assert keeper.held() == (BUILD_STDOUT + BUILD_STDERR).decode()
+    probe, build, process = client.runs()
+    assert_gpu_containers(client)
+    assert inner(probe) == [
+        "nvidia-smi",
+        *cuda_adapter.assemble_device_probe(timeout_s=1).command[1:],
+    ]
+    target = the_target()
+    assert inner(build) == [
+        "nvcc",
+        *target.flags,
+        f"{INSIDE}/{cuda_programs.VERIFICATION_PROGRAM_SOURCE.name}",
+        f"{INSIDE}/kernel/kernel.cu",
+        *target.trailing_flags,
+        "-o",
+        f"{INSIDE}/verification",
+    ]
+    assert inner(process) == [
+        f"{INSIDE}/verification",
+        "5",
+        "33",
+        "7",
+        "2",
+        "987654321",
+    ]
+    assert "--memory" not in process
+    assert [options["timeout_s"] for options in client.options()] == [
+        cuda_check.DEVICE_QUERY_TIMEOUT_S,
+        target.build_time_limit_s,
+        standin_settings.verification_process_time_limit_s(
+            5, 33, 7, 2, target.process_time_limit_cap_s
+        ),
+    ]
+    assert len({mount_source(command) for command in client.runs()}) == 1
+    assert os.path.basename(mount_source(build)).startswith(cuda_check.BUILD_DIR_PREFIX)
+    assert list(build_root.iterdir()) == []
+
+
+def test_the_selected_files_are_copied_in_the_selection_s_order(
+    client, build_root, tmp_path
+):
+    first = tmp_path / "b_first.cu"
+    second = tmp_path / "a_second.cu"
+    first.write_bytes(b"first")
+    second.write_bytes(b"second")
+    seen = {}
+    client.script = [probed(), built(seen=seen), reported()]
+    op = cuda_check.operation_for(
+        the_target(), sources=lambda path: [str(first), second]
+    )
+    assert call(op) == REPORT
+    build = client.runs()[1]
+    assert inner(build)[-5:-2] == [
+        f"{INSIDE}/{cuda_programs.VERIFICATION_PROGRAM_SOURCE.name}",
+        f"{INSIDE}/kernel/b_first.cu",
+        f"{INSIDE}/kernel/a_second.cu",
+    ]
+    assert seen == {
+        os.path.join("kernel", "b_first.cu"): b"first",
+        os.path.join("kernel", "a_second.cu"): b"second",
+        cuda_programs.VERIFICATION_PROGRAM_SOURCE.name: (
+            cuda_programs.VERIFICATION_PROGRAM_SOURCE.read_bytes()
+        ),
+    }
+
+
+def test_the_selection_is_asked_with_the_output_path_after_the_probe(
+    client, build_root, kernel
+):
+    asked = []
+
+    def selection(path):
+        asked.append((path, len(client.runs())))
+        return (kernel,)
+
+    client.script = [probed(), built(), reported()]
+    call(cuda_check.operation_for(the_target(), sources=selection), output_path="o/p")
+    assert asked == [("o/p", 1)]
+
+
+def test_the_operation_is_answered_by_ask(client, build_root, kernel, tmp_path):
+    client.script = [probed(), built(), ended(1)]
+    answer = check_operation.ask(
+        operation(kernel),
+        {},
+        {},
+        PARAMETERS,
+        "out",
+        build_log.LogKeeper(),
+        log_path=tmp_path / "log" / "build-log.txt",
+        **TOLERANCE,
+    )
+    assert (answer["outcome"], answer["condition"]) == ("broken", "exit_status")
+    assert (tmp_path / "log" / "build-log.txt").read_bytes() == (
+        BUILD_STDOUT + BUILD_STDERR
+    )
+
+
+def test_a_memory_limit_of_the_target_bounds_only_the_process(
+    client, build_root, kernel
+):
+    client.script = [probed(), built(), reported()]
+    call(operation(kernel, the_target(memory_limit_bytes=2**30)))
+    probe, build, process = client.runs()
+    assert "--memory" not in probe and "--memory" not in build
+    assert process[process.index("--memory") + 1] == str(2**30)
+
+
+# The device check (ADR-0207 decision 6)
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        ended(6, stderr=b"No devices were found\n"),
+        ended(9),
+        ended(12),
+        ended(125, stderr=b"could not select device driver"),
+        ended(126),
+        ended(127),
+        ended(4),
+        probed(b"no line it reads\n"),
+        timed_out(),
+        raises(local_run.ProgramNotFoundError("docker")),
+    ],
+    ids=[
+        "no-device",
+        "no-driver",
+        "no-nvml",
+        "no-gpu-for-the-container",
+        "not-invokable",
+        "not-in-image",
+        "other-status",
+        "unreadable",
+        "time-limit",
+        "no-client",
+    ],
+)
+def test_no_usable_device_is_device_unavailable_before_any_build_or_process(
+    client, build_root, kernel, answer
+):
+    client.script = [answer]
     selected = []
     op = cuda_check.operation_for(
         the_target(), sources=lambda path: selected.append(path) or (kernel,)
     )
     keeper = build_log.LogKeeper()
-    failure = failure_of(op, check_failure.KIND_DEVICE_UNAVAILABLE, keeper=keeper)
-    assert failure.message
-    assert stubs.names() == ["nvidia-smi"]
+    failure_of(op, check_failure.KIND_DEVICE_UNAVAILABLE, keeper=keeper)
+    (probe,) = client.runs()
+    assert inner(probe)[0] == cuda_adapter.DEVICE_PROGRAM
+    assert_gpu_containers(client)
     assert selected == [] and keeper.held() is None
     assert list(build_root.iterdir()) == []
 
 
-@posix_only
-def test_an_absent_device_query_program_is_device_unavailable(
-    stubs, build_root, kernel
+def test_no_numeric_user_is_device_unavailable_with_nothing_started(
+    monkeypatch, client, build_root, kernel
 ):
-    stubs.remove("nvidia-smi")
+    monkeypatch.delattr(os, "getuid", raising=False)
     failure_of(operation(kernel), check_failure.KIND_DEVICE_UNAVAILABLE)
-    assert stubs.names() == []
+    assert client.calls == []
     assert list(build_root.iterdir()) == []
 
 
-@pytest.mark.parametrize(
-    "found",
-    [
-        vendor_adapter.Probe(vendor_adapter.ABSENT, None, cuda_adapter.NO_DEVICE),
-        vendor_adapter.Probe(vendor_adapter.UNREADABLE, None, "unreadable"),
-    ],
-)
-def test_confirm_device_raises_device_unavailable_without_a_usable_device(
-    monkeypatch, found
+def test_a_probe_that_may_still_run_leaves_the_build_directory(
+    client, build_root, kernel
 ):
-    monkeypatch.setattr(
-        cuda_adapter,
-        "check_device",
-        lambda *, timeout_s: cuda_adapter.device_outcome(found),
-    )
-    with pytest.raises(tools.ToolFailure) as raised:
-        cuda_check.confirm_device()
-    assert raised.value.kind == check_failure.KIND_DEVICE_UNAVAILABLE
-    assert raised.value.message == found.message
+    client.script = [timed_out(), ended(1)]
+    failure_of(operation(kernel), check_failure.KIND_DEVICE_UNAVAILABLE)
+    assert len(client.runs()) == 1
+    assert len(list(build_root.iterdir())) == 1
 
 
-def test_confirm_device_goes_on_for_a_usable_device(monkeypatch):
-    seen = []
-
-    def check_device(*, timeout_s):
-        seen.append(timeout_s)
-        return cuda_adapter.device_outcome(vendor_adapter.Probe(PRESENT, "GPU", "m"))
-
-    monkeypatch.setattr(cuda_adapter, "check_device", check_device)
-    assert cuda_check.confirm_device() is None
-    assert seen == [cuda_check.DEVICE_QUERY_TIMEOUT_S]
+def test_confirm_device_goes_on_and_records_the_probe(client, tmp_path):
+    client.script = [probed()]
+    outcomes = []
+    assert cuda_check.confirm_device(IMAGE, str(tmp_path), outcomes) is None
+    (outcome,) = outcomes
+    assert type(outcome) is standin_container.ContainerResult
+    assert client.options()[0]["timeout_s"] == cuda_check.DEVICE_QUERY_TIMEOUT_S
 
 
-def test_confirm_device_lets_pass_what_the_check_lets_pass(monkeypatch):
-    def check_device(*, timeout_s):
-        raise PermissionError("not placed")
+def test_confirm_device_raises_the_failure_of_the_probe(client, tmp_path):
+    client.script = [ended(6)]
+    outcomes = []
+    with pytest.raises(standin_check.Answered) as raised:
+        cuda_check.confirm_device(IMAGE, str(tmp_path), outcomes)
+    assert raised.value.answer.kind == check_failure.KIND_DEVICE_UNAVAILABLE
+    assert raised.value.answer.message == cuda_adapter.NO_DEVICE
+    assert len(outcomes) == 1
 
-    monkeypatch.setattr(cuda_adapter, "check_device", check_device)
-    with pytest.raises(PermissionError):
-        cuda_check.confirm_device()
+
+def test_confirm_device_gives_the_forced_removal_its_limit(client, tmp_path):
+    client.script = [timed_out(), None]
+    with pytest.raises(standin_check.Answered):
+        cuda_check.confirm_device(IMAGE, str(tmp_path), [])
+    removal = [options for command, options in client.calls if command[1] == "rm"]
+    assert removal[0]["timeout_s"] == standin_check.REMOVAL_TIMEOUT_S
+
+
+def test_confirm_device_lets_pass_what_the_probe_lets_pass(client, tmp_path):
+    client.script = [raises(KeyboardInterrupt())]
+    outcomes = []
+    with pytest.raises(KeyboardInterrupt):
+        cuda_check.confirm_device(IMAGE, str(tmp_path), outcomes)
+    assert isinstance(outcomes[0], KeyboardInterrupt)
 
 
 # The selection
@@ -417,409 +661,304 @@ def test_select_sources_lets_a_request_to_end_pass():
         cuda_check.select_sources(selection, "out")
 
 
-@posix_only
-def test_a_failed_selection_starts_no_build(stubs, build_root):
-    op = cuda_check.operation_for(the_target(), sources=lambda path: ())
-    failure_of(op, check_failure.KIND_NO_KERNEL_SOURCE)
-    assert stubs.names() == ["nvidia-smi"]
-    assert list(build_root.iterdir()) == []
-
-
-# The build and the run, with stub programs
-
-
-@posix_only
-def test_a_built_program_is_run_and_its_report_returned(stubs, build_root, kernel):
-    stubs.set("nvcc", program=program(), stdout="nvcc says\n", stderr="a warning\n")
-    keeper = build_log.LogKeeper()
-    assert call(operation(kernel), keeper=keeper) == REPORT.encode()
-    device, build, run = stubs.calls()
-    assert device[0] == "nvidia-smi"
-    target = the_target()
-    assert build[0] == "nvcc"
-    assert tuple(build[1 : 1 + len(target.flags)]) == target.flags
-    sources = build[1 + len(target.flags) : -2]
-    assert sources == [str(cuda_programs.VERIFICATION_PROGRAM_SOURCE), str(kernel)]
-    assert build[-2] == "-o"
-    assert run[0] == "program"
-    assert Path(run[1]).name == cuda_check.EXECUTABLE_NAME
-    assert Path(run[1]).parent.parent == build_root
-    assert Path(run[1]).parent.name.startswith(cuda_check.BUILD_DIR_PREFIX)
-    assert run[2:] == ["5", "33", "7", "2", "987654321"]
-    assert "nvcc says" in keeper.held() and "a warning" in keeper.held()
-    assert list(build_root.iterdir()) == []
-
-
-@posix_only
-def test_the_kernel_files_are_handed_in_the_selection_s_order(
-    stubs, build_root, tmp_path
-):
-    first, second = tmp_path / "b.cu", tmp_path / "a.cu"
-    for path in (first, second):
-        path.write_text("//\n", encoding="utf-8")
-    op = cuda_check.operation_for(the_target(), sources=lambda path: (first, second))
-    call(op)
-    build = stubs.calls()[1]
-    assert build[-4:-2] == [str(first), str(second)]
-
-
-@posix_only
 @pytest.mark.parametrize(
-    ("conf", "answer"),
+    ("selection", "kind"),
     [
-        ({"status": 2, "stderr": "kernel.cu(1): error\n"}, "build_exit_status"),
-        ({"sleep": 5, "stderr": "slow\n"}, "build_time_limit"),
+        (lambda path: (), check_failure.KIND_NO_KERNEL_SOURCE),
+        (lambda path: 1 / 0, check_failure.KIND_KERNEL_SOURCE_UNREADABLE),
+        (lambda path: ("/no/such/kernel.cu",), check_failure.KIND_BUILD_INPUT_MISSING),
     ],
 )
-def test_a_build_that_fails_is_its_condition_with_the_log_kept(
-    stubs, build_root, kernel, conf, answer
+def test_a_failed_selection_starts_no_build_and_removes_the_directory(
+    client, build_root, selection, kind
 ):
-    stubs.set("nvcc", **conf)
-    keeper = build_log.LogKeeper()
-    op = operation(kernel, target=the_target(build_time_limit_s=1))
-    assert call(op, keeper=keeper) == answer
-    assert stubs.names() == ["nvidia-smi", "nvcc"]
-    assert type(keeper.held()) is str
-    if answer == "build_exit_status":
-        assert "kernel.cu(1): error" in keeper.held()
+    client.script = [probed()]
+    failure_of(cuda_check.operation_for(the_target(), sources=selection), kind)
+    assert len(client.runs()) == 1
     assert list(build_root.iterdir()) == []
 
 
-@posix_only
-def test_a_build_with_status_0_and_no_executable_is_build_output_missing(
-    stubs, build_root, kernel
+# The copies
+
+
+def test_place_sources_copies_the_program_the_files_and_further_harnesses(
+    tmp_path, kernel
 ):
-    stubs.set("nvcc", stdout="said nothing wrong\n")
-    keeper = build_log.LogKeeper()
-    failure = failure_of(
-        operation(kernel), check_failure.KIND_BUILD_OUTPUT_MISSING, keeper=keeper
+    build_dir = tmp_path / "build"
+    build_dir.mkdir()
+    further = tmp_path / "waiter.c"
+    further.write_bytes(b"waiter")
+    copies = cuda_check.place_sources(
+        lambda path: (kernel,),
+        "o",
+        cuda_programs.TIMING_DRIVER_SOURCE,
+        str(build_dir),
+        (further,),
     )
-    assert str(build_root) not in failure.message
-    assert "said nothing wrong" in keeper.held()
+    assert copies == standin_copies.Copies(
+        ("kernel/kernel.cu",), (), cuda_programs.TIMING_DRIVER_SOURCE.name, None
+    )
+    assert (build_dir / "waiter.c").read_bytes() == b"waiter"
+    assert (build_dir / "kernel" / "kernel.cu").read_bytes() == kernel.read_bytes()
+
+
+def test_place_sources_answers_a_failed_copy(tmp_path, kernel):
+    build_dir = tmp_path / "build"
+    build_dir.mkdir()
+    with pytest.raises(standin_check.Answered) as raised:
+        cuda_check.place_sources(
+            lambda path: (kernel,), "o", tmp_path / "absent.c", str(build_dir)
+        )
+    assert raised.value.answer.kind == check_failure.KIND_BUILD_INPUT_MISSING
+
+
+def test_two_files_of_one_name_are_build_directory_unusable(
+    client, build_root, tmp_path
+):
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    (tmp_path / "a" / "k.cu").write_bytes(b"1")
+    (tmp_path / "b" / "k.cu").write_bytes(b"2")
+    client.script = [probed()]
+    op = cuda_check.operation_for(
+        the_target(),
+        sources=lambda path: (tmp_path / "a" / "k.cu", tmp_path / "b" / "k.cu"),
+    )
+    failure_of(op, check_failure.KIND_BUILD_DIRECTORY_UNUSABLE)
+    assert len(client.runs()) == 1
     assert list(build_root.iterdir()) == []
 
 
-@posix_only
-def test_an_absent_compiler_is_compiler_unavailable_with_no_log(
-    stubs, build_root, kernel
+def test_a_copy_error_no_row_places_passes(monkeypatch, client, build_root, kernel):
+    def place(*args):
+        raise PermissionError("not placed")
+
+    monkeypatch.setattr(standin_copies, "place_selected_copies", place)
+    client.script = [probed()]
+    with pytest.raises(PermissionError):
+        call(operation(kernel))
+    assert list(build_root.iterdir()) == []
+
+
+# The build
+
+
+@pytest.mark.parametrize("status", [125, 126, 127])
+def test_a_runtime_status_of_the_build_is_compiler_unavailable(
+    client, build_root, kernel, status
 ):
-    stubs.remove("nvcc")
+    client.script = [probed(), ended(status, stderr=b"docker: error")]
     keeper = build_log.LogKeeper()
     failure_of(
         operation(kernel), check_failure.KIND_COMPILER_UNAVAILABLE, keeper=keeper
     )
-    assert keeper.held() is None
+    assert keeper.held() is None and len(client.runs()) == 2
     assert list(build_root.iterdir()) == []
 
 
-@posix_only
 @pytest.mark.parametrize(
-    ("conf", "answer"),
-    [({"status": 3}, "exit_status"), ({"sleep": 5}, "time_limit")],
+    ("answer", "condition"),
+    [
+        (ended(1, stderr=b"kernel.cu: error"), "build_exit_status"),
+        (ended(-9, stderr=b"kernel.cu: error"), "build_exit_status"),
+        (timed_out(stderr=b"kernel.cu: error"), "build_time_limit"),
+    ],
 )
-def test_a_process_that_fails_is_broken_and_never_a_tool_failure(
-    stubs, build_root, kernel, conf, answer
+def test_a_build_that_fails_is_its_condition_with_the_log_kept(
+    client, build_root, kernel, answer, condition
 ):
-    stubs.set("nvcc", program=program(stdout="part of a rep", **conf))
-    op = operation(kernel, target=the_target(process_time_limit_cap_s=1))
-    assert call(op) == answer
+    client.script = [probed(), answer]
+    keeper = build_log.LogKeeper()
+    assert call(operation(kernel), keeper=keeper) == condition
+    assert "kernel.cu: error" in keeper.held()
+    assert len(client.runs()) == 2
     assert list(build_root.iterdir()) == []
 
 
-@posix_only
-def test_an_incomplete_report_with_status_0_is_returned_for_the_judging(
-    stubs, build_root, kernel
+def test_a_build_with_status_0_and_no_executable_is_build_output_missing(
+    client, build_root, kernel
 ):
-    stubs.set("nvcc", program=program(stdout="part"))
+    client.script = [probed(), built(executable=False)]
     keeper = build_log.LogKeeper()
+    failure_of(
+        operation(kernel), check_failure.KIND_BUILD_OUTPUT_MISSING, keeper=keeper
+    )
+    assert keeper.held() is not None and len(client.runs()) == 2
+    assert list(build_root.iterdir()) == []
+
+
+def test_no_client_at_the_build_is_compiler_unavailable(client, build_root, kernel):
+    client.script = [probed(), raises(local_run.ProgramNotFoundError("docker"))]
+    failure_of(operation(kernel), check_failure.KIND_COMPILER_UNAVAILABLE)
+    assert list(build_root.iterdir()) == []
+
+
+def test_build_in_container_runs_nvcc_with_the_gpus(client, tmp_path):
+    client.script = [built("exe")]
+    outcomes = []
+    keeper = build_log.LogKeeper()
+    answer = cuda_check.build_in_container(
+        outcomes,
+        IMAGE,
+        str(tmp_path),
+        ("-O2", "x.cu", "-o", f"{INSIDE}/exe"),
+        7,
+        keeper=keeper,
+        executable="exe",
+        missing=standin_answer.Failure("k", "m"),
+    )
+    assert answer is standin_answer.GO_ON and len(outcomes) == 1
+    assert inner(client.runs()[0]) == ["nvcc", "-O2", "x.cu", "-o", f"{INSIDE}/exe"]
+    assert_gpu_containers(client)
+    assert client.options()[0]["timeout_s"] == 7
+    assert keeper.held() is not None
+
+
+def test_build_in_container_raises_the_missing_failure(client, tmp_path):
+    client.script = [built("exe", executable=False)]
+    missing = standin_answer.Failure("k", "m")
+    with pytest.raises(standin_check.Answered) as raised:
+        cuda_check.build_in_container(
+            [],
+            IMAGE,
+            str(tmp_path),
+            ("x.cu",),
+            7,
+            keeper=None,
+            executable="exe",
+            missing=missing,
+        )
+    assert raised.value.answer is missing
+
+
+# The process
+
+
+@pytest.mark.parametrize("status", [1, 3, 125, 126, 127, -9])
+def test_a_process_that_fails_is_broken_and_never_a_tool_failure(
+    client, build_root, kernel, status
+):
+    client.script = [probed(), built(), ended(status, stdout=b"part")]
+    assert call(operation(kernel)) == "exit_status"
+    assert list(build_root.iterdir()) == []
+
+
+def test_a_process_past_its_limit_is_time_limit(client, build_root, kernel):
+    client.script = [probed(), built(), timed_out()]
+    assert call(operation(kernel)) == "time_limit"
+    assert list(build_root.iterdir()) == []
+
+
+def test_a_process_whose_forced_removal_fails_leaves_the_directory(
+    client, build_root, kernel
+):
+    client.script = [probed(), built(), timed_out(), ended(1)]
+    assert call(operation(kernel)) == "time_limit"
+    assert len(list(build_root.iterdir())) == 1
+
+
+def test_a_process_whose_forced_removal_raises_is_time_limit(
+    client, build_root, kernel
+):
+    client.script = [probed(), built(), timed_out(), raises(OSError("removal"))]
+    assert call(operation(kernel)) == "time_limit"
+    assert len(list(build_root.iterdir())) == 1
+
+
+def test_an_incomplete_report_with_status_0_is_returned_for_the_judging(
+    client, build_root, kernel, tmp_path
+):
+    client.script = [probed(), built(), reported(b"seed 1\n")]
     answer = check_operation.ask(
         operation(kernel),
-        "r",
-        "h",
+        {},
+        {},
         PARAMETERS,
         "out",
-        keeper,
-        log_path=build_root.parent / "log.txt",
+        build_log.LogKeeper(),
+        log_path=tmp_path / "log.txt",
         **TOLERANCE,
     )
     assert answer["outcome"] == "broken"
-    assert list(build_root.iterdir()) == []
 
 
-@posix_only
-def test_an_executable_that_cannot_start_is_executable_unstartable(
-    stubs, build_root, kernel
-):
-    stubs.set("nvcc", program=program(), mode=0o644)
+def test_no_client_at_the_process_is_executable_unstartable(client, build_root, kernel):
+    client.script = [probed(), built(), raises(local_run.ProgramNotFoundError("d"))]
     failure_of(operation(kernel), check_failure.KIND_EXECUTABLE_UNSTARTABLE)
     assert list(build_root.iterdir()) == []
 
 
-@posix_only
-def test_an_unusable_build_directory_starts_no_build(
-    stubs, tmp_path, kernel, monkeypatch
+def test_a_request_to_end_in_the_process_still_removes_the_build_directory(
+    client, build_root, kernel
 ):
-    checkout = tmp_path / "checkout"
-    (checkout / ".git").mkdir(parents=True)
-    monkeypatch.setattr(tempfile, "tempdir", str(checkout))
-    failure_of(operation(kernel), check_failure.KIND_BUILD_DIRECTORY_UNUSABLE)
-    assert stubs.names() == ["nvidia-smi"]
-    assert [path.name for path in checkout.iterdir()] == [".git"]
-
-
-@posix_only
-def test_a_request_to_end_in_the_run_still_removes_the_build_directory(
-    stubs, build_root, kernel, monkeypatch
-):
-    def run(*args, **kwargs):
-        raise KeyboardInterrupt
-
-    monkeypatch.setattr(cuda_adapter, "run", run)
+    client.script = [probed(), built(), raises(KeyboardInterrupt()), None]
     with pytest.raises(KeyboardInterrupt):
         call(operation(kernel))
     assert list(build_root.iterdir()) == []
 
 
-# build_executable, with a stand-in build
+def test_run_process_runs_the_program_with_the_gpus_and_the_bound(client, tmp_path):
+    client.script = [reported()]
+    outcomes = []
+    ran = cuda_check.run_process(
+        outcomes, IMAGE, str(tmp_path), "/build/x", ("1", "2"), 9, 2**20
+    )
+    assert ran.stdout == REPORT and outcomes == [ran]
+    (command,) = client.runs()
+    assert inner(command) == ["/build/x", "1", "2"]
+    assert command[command.index("--memory") + 1] == str(2**20)
+    assert_gpu_containers(client)
 
 
-def a_result(tmp_path, *, ok=False, returncode=0, timed_out=False, log="the log"):
-    return clang_build.BuildResult(
-        ok=ok,
-        returncode=returncode,
-        timed_out=timed_out,
-        output=tmp_path / "x",
-        log=log,
-        command=("nvcc",),
-        duration_s=0.1,
+def test_run_process_answers_a_time_limit_raised_by_the_removal(client, tmp_path):
+    client.script = [timed_out(), raises(OSError("removal"))]
+    assert (
+        cuda_check.run_process([], IMAGE, str(tmp_path), "/build/x", (), 9, None)
+        == "time_limit"
     )
 
 
-def built_with(monkeypatch, tmp_path, kernel, answer):
-    def build(*args, **kwargs):
-        if isinstance(answer, BaseException):
-            raise answer
-        return answer
-
-    monkeypatch.setattr(clang_build, "build", build)
-    keeper = build_log.LogKeeper()
-    return keeper, lambda: cuda_check.build_executable(
-        the_target(), (kernel,), tmp_path / "x", keeper
-    )
-
-
-def test_build_executable_returns_none_for_a_built_executable(
-    monkeypatch, tmp_path, kernel
+def test_an_unusable_build_directory_starts_nothing(
+    monkeypatch, client, build_root, kernel
 ):
-    keeper, build = built_with(
-        monkeypatch, tmp_path, kernel, a_result(tmp_path, ok=True)
-    )
-    assert build() is None
-    assert keeper.held() == "the log"
+    def refused(prefix):
+        raise tools.ToolFailure(check_failure.KIND_BUILD_DIRECTORY_UNUSABLE, "m")
 
-
-@pytest.mark.parametrize(
-    ("error", "answer", "log"),
-    [
-        (
-            clang_build.TemporaryNotRemovedError(OSError("t"), None),
-            None,
-            "carried log",
-        ),
-        (
-            clang_build.CompilerRunError(OSError("r"), timed_out=True, log="so far"),
-            "build_time_limit",
-            "so far",
-        ),
-        (
-            clang_build.CompilerRunError(OSError("r"), returncode=1),
-            "build_exit_status",
-            None,
-        ),
-    ],
-)
-def test_build_executable_places_a_raised_build_and_keeps_its_log(
-    monkeypatch, tmp_path, kernel, error, answer, log
-):
-    if isinstance(error, clang_build.TemporaryNotRemovedError):
-        error.result = a_result(tmp_path, ok=True, log="carried log")
-    keeper, build = built_with(monkeypatch, tmp_path, kernel, error)
-    assert build() == answer
-    assert keeper.held() == log
-
-
-@pytest.mark.parametrize(
-    ("error", "kind"),
-    [
-        (
-            clang_build.CompilerNotFoundError("nvcc"),
-            check_failure.KIND_COMPILER_UNAVAILABLE,
-        ),
-        (
-            clang_build.CompilerNotStartedError(OSError("s")),
-            check_failure.KIND_COMPILER_UNAVAILABLE,
-        ),
-        (
-            clang_build.ArtefactNotPlacedError(OSError("p"), None),
-            check_failure.KIND_BUILD_OUTPUT_MISSING,
-        ),
-    ],
-)
-def test_build_executable_raises_the_kind_of_a_placed_error(
-    monkeypatch, tmp_path, kernel, error, kind
-):
-    if isinstance(error, clang_build.ArtefactNotPlacedError):
-        error.result = a_result(tmp_path, log="placed log")
-    keeper, build = built_with(monkeypatch, tmp_path, kernel, error)
-    with pytest.raises(tools.ToolFailure) as raised:
-        build()
-    assert raised.value.kind == kind
-    assert raised.value.message == cuda_check._BUILD_MESSAGES[kind]
-    expected = (
-        "placed log" if isinstance(error, clang_build.ArtefactNotPlacedError) else None
-    )
-    assert keeper.held() == expected
-
-
-def test_build_executable_answers_a_refused_setting(monkeypatch, tmp_path, kernel):
-    error = ValueError("a flag")
-    error.parameter = "flags"
-    keeper, build = built_with(monkeypatch, tmp_path, kernel, error)
-    with pytest.raises(tools.ToolFailure) as raised:
-        build()
-    assert raised.value.kind == check_failure.KIND_SETTINGS_REFUSED
-    assert keeper.held() is None
-
-
-def test_build_executable_lets_an_error_no_row_places_pass(
-    monkeypatch, tmp_path, kernel
-):
-    keeper, build = built_with(monkeypatch, tmp_path, kernel, LookupError("x"))
-    with pytest.raises(LookupError):
-        build()
-    assert keeper.held() is None
-
-
-def test_build_executable_refuses_a_build_no_row_holds(monkeypatch, tmp_path, kernel):
-    result = a_result(tmp_path, returncode=None)
-    _, build = built_with(monkeypatch, tmp_path, kernel, result)
-    with pytest.raises(RuntimeError):
-        build()
-
-
-def test_build_executable_hands_the_command_of_the_adapter(
-    monkeypatch, tmp_path, kernel
-):
-    seen = {}
-
-    def build(sources, output, **kwargs):
-        seen.update(kwargs, sources=sources, output=output)
-        return a_result(tmp_path, ok=True)
-
-    monkeypatch.setattr(clang_build, "build", build)
-    target = the_target(build_time_limit_s=7)
-    cuda_check.build_executable(
-        target, (kernel,), tmp_path / "x", build_log.LogKeeper()
-    )
-    assert seen == {
-        "sources": (kernel,),
-        "output": tmp_path / "x",
-        "timeout_s": 7,
-        "flags": target.flags,
-        "trailing_flags": target.trailing_flags,
-        "compiler": ("nvcc",),
-        "env": target.env,
-    }
-
-
-# carry_out
-
-
-def test_carry_out_returns_what_run_returns_and_removes_the_directory(
-    monkeypatch, build_root, kernel, tmp_path
-):
-    monkeypatch.setattr(cuda_check, "confirm_device", lambda: None)
-    monkeypatch.setattr(
-        cuda_check, "build_executable", lambda target, sources, executable, keeper: None
-    )
-    seen = []
-    answer = cuda_check.carry_out(
-        the_target(),
-        lambda path: (kernel,),
-        "out",
-        build_log.LogKeeper(),
-        program=tmp_path / "program.c",
-        executable_name="exe",
-        prefix="p-",
-        run=lambda executable: seen.append(executable) or "ran",
-    )
-    assert answer == "ran"
-    assert Path(seen[0]).name == "exe" and Path(seen[0]).parent.name.startswith("p-")
-    assert list(build_root.iterdir()) == []
-
-
-def test_carry_out_does_not_run_after_a_build_condition(
-    monkeypatch, build_root, kernel
-):
-    monkeypatch.setattr(cuda_check, "confirm_device", lambda: None)
-    monkeypatch.setattr(
-        cuda_check,
-        "build_executable",
-        lambda target, sources, executable, keeper: "build_exit_status",
-    )
-    answer = cuda_check.carry_out(
-        the_target(),
-        lambda path: (kernel,),
-        "out",
-        build_log.LogKeeper(),
-        program="p.c",
-        executable_name="exe",
-        prefix="p-",
-        run=lambda executable: pytest.fail("ran"),
-    )
-    assert answer == "build_exit_status"
-    assert list(build_root.iterdir()) == []
-
-
-def test_carry_out_removes_the_directory_when_the_build_raises(
-    monkeypatch, build_root, kernel
-):
-    monkeypatch.setattr(cuda_check, "confirm_device", lambda: None)
-
-    def build(target, sources, executable, keeper):
-        raise tools.ToolFailure(check_failure.KIND_COMPILER_UNAVAILABLE, "m")
-
-    monkeypatch.setattr(cuda_check, "build_executable", build)
-    with pytest.raises(tools.ToolFailure):
-        cuda_check.carry_out(
-            the_target(),
-            lambda path: (kernel,),
-            "out",
-            build_log.LogKeeper(),
-            program="p.c",
-            executable_name="exe",
-            prefix="p-",
-            run=lambda executable: None,
-        )
-    assert list(build_root.iterdir()) == []
+    monkeypatch.setattr(standin_check, "make_build_dir", refused)
+    failure_of(operation(kernel), check_failure.KIND_BUILD_DIRECTORY_UNUSABLE)
+    assert client.calls == []
 
 
 # On the real GPU (FR-19 (5))
 
 
+def real_image():
+    return os.environ.get(cuda_image.ENV_IMAGE) or REAL_IMAGE
+
+
 @pytest.fixture
-def gpu():
-    if os.name != "posix":
-        pytest.skip("the programs use POSIX descriptors and CLOCK_MONOTONIC")
-    if shutil.which("nvcc") is None:
-        pytest.skip("nvcc is not on PATH (FR-19 (5): a vendor tool's execution test)")
-    if shutil.which("g++") is None:
-        pytest.skip("nvcc needs the host compiler g++, which is not on PATH")
-    if shutil.which("nvidia-smi") is None:
-        pytest.skip("nvidia-smi is not on PATH (FR-19 (5))")
-    found = cuda_adapter.device_probe(timeout_s=LIMIT)
-    if found.state != PRESENT:
-        pytest.skip(f"no usable GPU: {found.message}")
+def gpu(monkeypatch, tmp_path):
+    if os.name != "posix" or not hasattr(os, "getuid"):
+        pytest.skip("the containers need a POSIX host with a numeric user")
+    if shutil.which("docker") is None:
+        pytest.skip("docker is not on PATH (FR-19 (5): a vendor tool's execution test)")
+    image = real_image()
+    found = subprocess.run(
+        ["docker", "image", "inspect", image],
+        capture_output=True,
+        check=False,
+        timeout=LIMIT,
+    )
+    if found.returncode != 0:
+        pytest.skip(f"the image {image} is not in the local store")
+    probe_dir = tmp_path / "probe"
+    probe_dir.mkdir()
+    outcome = cuda_adapter.check_device_in_container(
+        image, str(probe_dir), timeout_s=LIMIT, removal_timeout_s=60
+    )
+    if outcome.form != vendor_adapter.GO_ON:
+        pytest.skip(f"no usable GPU in a container of {image}: {outcome.message}")
+    monkeypatch.setenv(cuda_image.ENV_IMAGE, image)
 
 
 HW_PROFILE = {
@@ -830,6 +969,18 @@ HW_PROFILE = {
     "host": {"cpu": "c", "os": "o"},
     "hw_source": "external",
 }
+
+
+def placed(tmp_path, fixture):
+    output = tmp_path / "output"
+    output.mkdir(exist_ok=True)
+    text = (FIXTURES / fixture).read_text(encoding="utf-8")
+    if fixture == "gemm_wrong.cu":
+        text = "#define GEMM_WRONG 1\n" + (FIXTURES / "gemm.cu").read_text(
+            encoding="utf-8"
+        )
+    (output / fixture).write_text(text, encoding="utf-8")
+    return output
 
 
 def a_table(fixture):
@@ -862,7 +1013,7 @@ def checked_on_the_gpu(tmp_path, fixture, parameters=PARAMETERS):
         {"run_id": "test"},
         HW_PROFILE,
         parameters,
-        str(FIXTURES),
+        str(placed(tmp_path, fixture)),
         keeper,
         log_path=log_path,
         **TOLERANCE,
@@ -897,14 +1048,19 @@ def test_a_kernel_that_exits_non_zero_is_broken(gpu, tmp_path):
     assert (result["outcome"], result["condition"]) == ("broken", "exit_status")
 
 
-def test_a_device_lost_after_the_check_is_a_run_failure(gpu, tmp_path, monkeypatch):
-    hidden = {**os.environ, "CUDA_VISIBLE_DEVICES": ""}
-    run = cuda_adapter.run
+def test_a_device_lost_after_the_probe_is_a_run_failure(gpu, tmp_path, monkeypatch):
+    def without_the_gpus(outcomes, image, build_dir, program, arguments, limit, bound):
+        return standin_check.run_container(
+            outcomes,
+            standin_answer.PROCESS,
+            image,
+            build_dir,
+            program,
+            arguments,
+            limit,
+            memory_limit_bytes=bound,
+        )
 
-    def without_a_device(target, executable, arguments=(), *, timeout_s):
-        target = dataclasses.replace(target, env=hidden)
-        return run(target, executable, arguments, timeout_s=timeout_s)
-
-    monkeypatch.setattr(cuda_adapter, "run", without_a_device)
+    monkeypatch.setattr(cuda_check, "run_process", without_the_gpus)
     result, _ = checked_on_the_gpu(tmp_path, "gemm.cu")
     assert (result["outcome"], result["condition"]) == ("broken", "exit_status")

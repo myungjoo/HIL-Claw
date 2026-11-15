@@ -792,3 +792,122 @@ def test_harness_text_that_cannot_be_written(monkeypatch, output, build_dir, har
     assert raised.value.failure == COPY_UNWRITABLE
     assert raised.value.__cause__ is error
     assert tree(build_dir) == ["kernel", "kernel/a.c"]
+
+
+# Files the caller selected (ADR-0207 decision 9, slice 5)
+
+
+def test_selected_files_are_copied_in_the_given_order(tmp_path, build_dir, harness):
+    first = tmp_path / "x" / "b_kernel.cu"
+    second = tmp_path / "y" / "a_util.cu"
+    first.parent.mkdir()
+    second.parent.mkdir()
+    write(first.parent, first.name)
+    write(second.parent, second.name)
+    copies = standin_copies.place_selected_copies(
+        (first, str(second)), harness, build_dir
+    )
+    assert copies == Copies(
+        ("kernel/b_kernel.cu", "kernel/a_util.cu"), (), harness.name, None
+    )
+    assert_copy(build_dir, "kernel/b_kernel.cu", first)
+    assert_copy(build_dir, "kernel/a_util.cu", second)
+    assert_copy(build_dir, harness.name, harness)
+    assert tree(build_dir) == [
+        "kernel",
+        "kernel/a_util.cu",
+        "kernel/b_kernel.cu",
+        "verification_program.c",
+    ]
+
+
+def test_selected_files_of_one_name_meet_entry_exists(tmp_path, build_dir, harness):
+    for name in ("x", "y"):
+        (tmp_path / name).mkdir()
+        write(tmp_path / name, "k.cu")
+    with pytest.raises(CopyError) as raised:
+        standin_copies.place_selected_copies(
+            [tmp_path / "x" / "k.cu", tmp_path / "y" / "k.cu"], harness, build_dir
+        )
+    assert raised.value.failure == ENTRY_EXISTS
+
+
+@pytest.mark.parametrize(
+    ("make", "failure"),
+    [
+        (lambda path: None, KERNEL_FILE_UNREADABLE),
+        (lambda path: path.mkdir(), KERNEL_FILE_CHANGED),
+    ],
+)
+def test_a_selected_file_that_cannot_be_read_writes_nothing(
+    tmp_path, build_dir, harness, make, failure
+):
+    source = tmp_path / "k.cu"
+    make(source)
+    with pytest.raises(CopyError) as raised:
+        standin_copies.place_selected_copies((source,), harness, build_dir)
+    assert raised.value.failure == failure
+    assert tree(build_dir) == []
+
+
+def test_a_selected_link_is_not_followed(tmp_path, build_dir, harness):
+    target = tmp_path / "real.cu"
+    write(tmp_path, "real.cu")
+    symlink(tmp_path / "link.cu", target)
+    with pytest.raises(CopyError) as raised:
+        standin_copies.place_selected_copies(
+            (tmp_path / "link.cu",), harness, build_dir
+        )
+    assert raised.value.failure == KERNEL_FILE_CHANGED
+    assert tree(build_dir) == []
+
+
+def test_an_absent_harness_program_writes_nothing(tmp_path, build_dir):
+    write(tmp_path, "k.cu")
+    with pytest.raises(CopyError) as raised:
+        standin_copies.place_selected_copies(
+            (tmp_path / "k.cu",), tmp_path / "absent.c", build_dir
+        )
+    assert raised.value.failure == HARNESS_UNREADABLE
+    assert tree(build_dir) == []
+
+
+@pytest.mark.parametrize(
+    ("sources", "parameter", "error"),
+    [
+        ("k.cu", "sources", TypeError),
+        (None, "sources", TypeError),
+        ((), "sources", ValueError),
+        ([], "sources", ValueError),
+        ((3,), "sources", TypeError),
+        ((b"k.cu",), "sources", TypeError),
+        (("k\0.cu",), "sources", ValueError),
+        (("dir/",), "sources", ValueError),
+        (("..",), "sources", ValueError),
+    ],
+)
+def test_selected_sources_refused_before_anything(
+    build_dir, harness, sources, parameter, error
+):
+    with pytest.raises(error) as raised:
+        standin_copies.place_selected_copies(sources, harness, build_dir)
+    assert raised.value.parameter == parameter
+    assert tree(build_dir) == []
+
+
+def test_selected_copies_check_the_other_arguments_first(tmp_path, build_dir, harness):
+    with pytest.raises(ValueError) as raised:
+        standin_copies.place_selected_copies(None, harness, "relative")
+    assert raised.value.parameter == "build_dir"
+    (build_dir / "file").write_bytes(b"")
+    with pytest.raises(NotADirectoryError):
+        standin_copies.place_selected_copies(
+            (harness,), harness, str(build_dir / "file")
+        )
+
+
+def test_place_copies_is_unchanged_by_the_selected_form(output, build_dir, harness):
+    write(output, "a.c")
+    write(output, "kernel.cu")
+    copies = place_copies(output, harness, build_dir)
+    assert copies == Copies(("kernel/a.c",), (), harness.name, None)

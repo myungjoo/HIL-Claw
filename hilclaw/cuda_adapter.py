@@ -55,9 +55,10 @@ Each job has the three parts of :mod:`hilclaw.vendor_adapter`:
   :data:`~hilclaw.vendor_adapter.GO_ON` carrying the probe's version; no
   device, the query program absent, or a query that could not be read, the
   tool failure ``device_unavailable`` with the probe's message.
-  :func:`check_device` joins the query and that reading. An operation calls
-  it before the attempt's process is started; a device lost after it went
-  on is that process's run failure (ADR-0194 decision 3).
+  :func:`check_device` joins the query and that reading on the host. The
+  ``cuda_gpu`` operations run the check in a probe container instead (below)
+  before the attempt's process is started; a device lost after it went on
+  is that process's run failure (ADR-0194 decision 3).
 * **device check in a probe container** (ADR-0207 decisions 6 and 7):
   :func:`check_device_in_container` runs the same query in one new container
   of the ``cuda_gpu`` image with ``--gpus all``
@@ -471,7 +472,7 @@ def interpret_device_container_probe(answer):
 
 
 def check_device_in_container(
-    image, build_dir, *, timeout_s, removal_timeout_s, client="docker"
+    image, build_dir, *, timeout_s, removal_timeout_s, client="docker", outcomes=None
 ):
     """Run the device query in a probe container and return the :class:`hilclaw.vendor_adapter.Outcome` of :func:`device_outcome`.
 
@@ -489,7 +490,20 @@ def check_device_in_container(
     ``run_in_container`` (:class:`TypeError` or :class:`ValueError` with
     ``parameter``), raised before anything starts, and any exception it does
     not place are raised unchanged.
+
+    ``outcomes`` is ``None``, the default, or a ``list`` to which what
+    ``run_in_container`` returned or raised is appended before it is read, so
+    that the caller can tell whether the container can still run
+    (:func:`hilclaw.standin_answer.build_dir_removable`). Any other value
+    raises :class:`TypeError` with ``parameter`` ``"outcomes"`` before
+    anything starts.
     """
+    if outcomes is not None and type(outcomes) is not list:
+        error = TypeError(
+            f"outcomes must be a list or None, not {type(outcomes).__name__}"
+        )
+        error.parameter = "outcomes"
+        raise error
     try:
         answer = standin_container.run_in_container(
             image,
@@ -501,9 +515,15 @@ def check_device_in_container(
             client=client,
             gpus=True,
         )
-    except Exception as error:
+    except BaseException as error:
+        if outcomes is not None:
+            outcomes.append(error)
+        if not isinstance(error, Exception):
+            raise
         found = interpret_device_container_probe(error)
         if found is None:
             raise
         return device_outcome(found)
+    if outcomes is not None:
+        outcomes.append(answer)
     return device_outcome(interpret_device_container_probe(answer))

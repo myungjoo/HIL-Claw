@@ -1,73 +1,84 @@
-"""The ``cuda_gpu`` operation of ``correctness.check`` on the host executor (ADR-0207 decision 9, slice 4).
+"""The ``cuda_gpu`` operation of ``correctness.check`` in containers (ADR-0207 decision 9, slice 5).
 
 ``ARCHITECTURE/decisions/ADR-0207-od33-cuda-target-demonstration.md`` gives
 the target ``cuda_gpu`` the fp32 ``gemm`` contract in the language ``cuda``
-(decision 4) and a device check before the attempt's process (decision 6).
+(decision 4), a device check before the attempt's process (decision 6) and
+containers of one image given the GPU with ``--gpus all`` (decision 7).
 :func:`operation_for` builds the operation of ``correctness.check`` of that
 target, called as :func:`hilclaw.check_operation.ask` calls an operation,
 with five positional things: the request, the hw_profile, the check
 parameters, the output path and the log keeper. In the order of ADR-0056
-decision 7 it:
+decision 7 and the Walk-through of ADR-0168 it:
 
 1. checks its own arguments (as :mod:`hilclaw.standin_check` does for fp32
    ``gemm``) and computes the process's arguments ``m k n draws seed``
    (ADR-0017 decision 2) and its time limit
    (:func:`hilclaw.standin_settings.verification_process_time_limit_s` with
    the target's cap);
-2. runs the device check, :func:`confirm_device`
-   (:func:`hilclaw.cuda_adapter.check_device`): no usable device, an absent
-   query program and an unreadable query are the tool failure
-   ``device_unavailable`` (ADR-0207 decision 6), raised before any build and
-   before any process of the attempt;
-3. asks the selection ``sources`` for the kernel's files
-   (:func:`select_sources`);
-4. makes the build directory of the call
-   (:func:`hilclaw.standin_check.make_build_dir`), removed by
-   :func:`hilclaw.standin_check.remove_build_dir` before the operation
-   returns or raises, on every path;
-5. builds :data:`hilclaw.harness.cuda_programs.VERIFICATION_PROGRAM_SOURCE`,
-   then the selected files, into :data:`EXECUTABLE_NAME` in that directory
-   with ``nvcc`` at the target's flags (:func:`build_executable`), hands the
-   keeper the compiler's log where ADR-0078 decision 2 keeps it, and answers
-   the build by the rows of ADR-0060 decision 4 as
-   :func:`hilclaw.check_build.read_build` and
-   :func:`hilclaw.check_build.place_error` give them (no new kind);
-6. runs the executable with the process's arguments within the limit
-   (:func:`hilclaw.cuda_adapter.run`) and returns its standard output, as
-   ``bytes``, after status 0; a time limit is ``"time_limit"`` and any other
-   status ``"exit_status"``. The tool function judges the report
+2. reads the image named by :data:`hilclaw.cuda_image.ENV_IMAGE`
+   (:func:`container_image`): none named is ``compiler_unavailable`` (C1), a
+   refused value the same (C2);
+3. makes the build directory of the call
+   (:func:`hilclaw.standin_check.make_build_dir`; S3);
+4. runs the device check in a probe container of that image with
+   ``--gpus all`` (:func:`confirm_device`,
+   :func:`hilclaw.cuda_adapter.check_device_in_container`): everything but a
+   usable device is the tool failure ``device_unavailable`` (decision 6),
+   raised before any build and any process of the attempt;
+5. asks the selection ``sources`` for the kernel's files
+   (:func:`select_sources`) and copies them below
+   :data:`hilclaw.standin_copies.KERNEL_DIR` with
+   :data:`hilclaw.harness.cuda_programs.VERIFICATION_PROGRAM_SOURCE` beside
+   them (:func:`place_sources`; C12, C13);
+6. builds the program, then the copies in the selection's order, into
+   :data:`EXECUTABLE_NAME` with ``nvcc`` at the target's flags and trailing
+   flags in a build container with ``--gpus all`` (:func:`build_in_container`;
+   ``-arch=native`` needs the GPU), within the target's build time limit; the
+   keeper is handed the compiler's log as ADR-0169 decisions 2 and 3 say, and
+   the build is answered by ADR-0168 (C5 to C7, C10, S9);
+7. runs the executable with the process's arguments in a process container
+   with ``--gpus all`` (:func:`run_process`), with the target's
+   ``memory_limit_bytes`` (``None`` for ``cuda_gpu``: no bound) and the
+   limit of step 1, and returns its standard output, as ``bytes``, after
+   status 0; a time limit is ``"time_limit"`` and any other status, 125 to
+   127 included, ``"exit_status"`` (C8). The tool function judges the report
    (``hilclaw.harness.verification``; the oracle of HQ-0096 (2) (a)).
 
-A non-zero status or an incomplete report of the attempt's process is never a
-tool failure (ADR-0110 decision 3): a device lost after the check went on is
-that process's ``"exit_status"`` (ADR-0207 decision 6).
+The build directory is removed before the operation returns or raises, where
+every container of the call allows it, the probe's included
+(:func:`hilclaw.standin_check.carry_out`; ADR-0168 decision 5). Every
+:class:`hilclaw.standin_answer.Failure` is raised as
+:class:`hilclaw.tools.ToolFailure` with its kind and message; what no row
+places and every request to end passes as it is. A non-zero status or an
+incomplete report of the attempt's process is never a tool failure
+(ADR-0110 decision 3): a device lost after the probe went on is that
+process's ``"exit_status"`` (decision 6).
 
 **The kernel's files are the caller's.** Which files of an attempt's
 ``output/`` a CUDA kernel is (a ``.cu`` name) is HQ-0104's question, which
 this module does not answer: :func:`hilclaw.kernel_source.read_compiled_set`
 admits no ``.cu`` name and is not used here. ``sources`` is a callable given
 by name with no default; it is called with the output path and returns the
-paths of the kernel's source files, which are handed to ``nvcc`` where they
-are, after the program. A test gives a selection of a test-placed fixture;
-slice 6 gives the one HQ-0104's answer provides.
+paths of the kernel's source files, which are copied into the build directory
+(:func:`hilclaw.standin_copies.place_selected_copies`) and handed to ``nvcc``
+there. A test gives a selection of a test-placed fixture; slice 6 gives the
+one HQ-0104's answer provides.
 
-**The host executor is test-only.** The build and the process run on the host
-through :func:`hilclaw.clang_build.build` and :func:`hilclaw.local_run.run`,
-outside any container. The runtime builds and runs kernels only in containers
-(NFR-4), so :func:`hilclaw.check_definition.default_table` holds no ``cuda_gpu``
-entry and a call about ``cuda_gpu`` through the default registry is
-``no_backend``; slice 5 moves the build and the process into containers.
+**Only in containers.** The build and the process run only in containers of
+the named image (NFR-4; decision 7); nothing of the attempt runs on the host.
+:func:`hilclaw.check_definition.default_table` holds no ``cuda_gpu`` entry
+(slice 6), so a call about ``cuda_gpu`` through the default registry is
+``no_backend``.
 
 Choices that are this module's own and no rule of a record:
 
-* The device query is given :data:`DEVICE_QUERY_TIMEOUT_S`.
+* The device query is given :data:`DEVICE_QUERY_TIMEOUT_S`, its forced
+  removal :data:`hilclaw.standin_check.REMOVAL_TIMEOUT_S`.
 * ``sources`` returns a ``tuple`` or ``list``; an empty one is
   ``no_kernel_source`` (S1), a path that is not a regular file (a link
   included) ``build_input_missing`` (S5), and an :class:`Exception` it raises
   ``kernel_source_unreadable`` (S2). Another value, or an element that is no
   ``str`` or :class:`os.PathLike`, raises :class:`TypeError`.
-* A kind a build row gives is raised with a fixed message of this module,
-  which shows no path or byte of the log.
 * No candidate build (ADR-0198 decision 6) is read: the target's flags are
   the build's.
 * Before anything is started, :class:`TypeError` is raised for check
@@ -79,9 +90,10 @@ Choices that are this module's own and no rule of a record:
   not an ``int`` from 0 to below ``2**64``.
 
 :func:`check_target`, :func:`check_sources`, :func:`check_keeper`,
-:func:`confirm_device`, :func:`select_sources`, :func:`build_executable` and
-:func:`carry_out` are the steps this operation shares with the ``cuda_gpu``
-operation of the run tools, :func:`hilclaw.cuda_run.operation_for`.
+:func:`container_image`, :func:`confirm_device`, :func:`select_sources`,
+:func:`place_sources`, :func:`build_in_container` and :func:`run_process`
+are the steps this operation shares with the ``cuda_gpu`` operation of the
+run tools, :func:`hilclaw.cuda_run.operation_for`.
 """
 
 import os
@@ -89,12 +101,13 @@ import stat
 
 from hilclaw import (
     build_log,
-    check_build,
     check_failure,
     check_parameters,
-    clang_build,
     cuda_adapter,
+    cuda_image,
+    standin_answer,
     standin_check,
+    standin_copies,
     standin_settings,
     targets,
     tools,
@@ -109,26 +122,23 @@ EXECUTABLE_NAME = "verification"
 BUILD_DIR_PREFIX = "hilclaw-cuda-check-"
 
 _SEED_LIMIT = 2**64
-_CONDITIONS = ("build_time_limit", "build_exit_status")
+_EXECUTABLE = standin_check.in_container(EXECUTABLE_NAME)
+_IMAGE_REFUSED = "the container image named is refused"
 _SELECTION_FAILED = "the selection of the kernel's source files failed"
 _NO_SOURCE = "the selection named no kernel source file"
 _NOT_REGULAR = "a selected kernel source file is not a regular file"
-_BUILD_MESSAGES = {
-    check_failure.KIND_BUILD_DIRECTORY_UNUSABLE: "the build directory could not be used",
-    check_failure.KIND_SETTINGS_REFUSED: "a setting of the build is refused",
-    check_failure.KIND_BUILD_INPUT_MISSING: "an input of the build is not a regular file",
-    check_failure.KIND_COMPILER_UNAVAILABLE: "the compiler was not found or could not be started",
-    check_failure.KIND_BUILD_OUTPUT_MISSING: "the build ended with status 0 and left no executable",
-}
-_NO_STATUS = "the build is not ok, did not time out and has no status"
+_NO_EXECUTABLE = standin_answer.Failure(
+    check_failure.KIND_BUILD_OUTPUT_MISSING,
+    "the build ended with status 0 and left no executable",
+)
 
 
 def operation_for(target, *, sources):
-    """Return the ``correctness.check`` operation of ``target`` on the host executor.
+    """Return the ``correctness.check`` operation of ``target`` in containers.
 
     ``target`` is exactly a :class:`hilclaw.targets.Target` (for
     ``cuda_gpu``, ``targets.target(targets.CUDA_GPU)``); its flags, trailing
-    flags, ``env``, build time limit and process time-limit cap are the
+    flags, build time limit, process time-limit cap and memory limit are the
     call's. ``sources`` is the selection of the kernel's source files, a
     callable of the output path, required and keyword-only (the module
     docstring). Raises :class:`TypeError` for a ``target`` that is not
@@ -140,23 +150,29 @@ def operation_for(target, *, sources):
     as ``bytes`` after status 0, or one of ``"build_time_limit"``,
     ``"build_exit_status"``, ``"time_limit"`` and ``"exit_status"``, and
     raises :class:`hilclaw.tools.ToolFailure` of a backend kind of
-    :mod:`hilclaw.check_failure`, ``device_unavailable`` first of all. What
-    no row places, and every request to end, passes as it is.
+    :mod:`hilclaw.check_failure`, ``device_unavailable`` before any build.
+    What no row places, and every request to end, passes as it is.
     """
     check_target(target)
     check_sources(sources)
 
     def operation(request, hw_profile, parameters, output_path, keeper, /):
         arguments, limit = _checked(parameters, keeper, target.process_time_limit_cap_s)
-        return carry_out(
-            target,
-            sources,
-            output_path,
-            keeper,
-            program=cuda_programs.VERIFICATION_PROGRAM_SOURCE,
-            executable_name=EXECUTABLE_NAME,
-            prefix=BUILD_DIR_PREFIX,
-            run=lambda executable: _verify(target, executable, arguments, limit),
+        image = container_image()
+        build_dir = standin_check.make_build_dir(BUILD_DIR_PREFIX)
+        return standin_check.carry_out(
+            build_dir,
+            lambda outcomes: _carry_out(
+                target,
+                sources,
+                image,
+                build_dir,
+                output_path,
+                keeper,
+                arguments,
+                limit,
+                outcomes,
+            ),
         )
 
     return operation
@@ -197,18 +213,49 @@ def _checked(parameters, keeper, cap_s):
     return tuple(str(int(value)) for value in (m, k, n, draws, seed)), limit
 
 
-def confirm_device():
-    """Run the device check of ADR-0207 decision 6; return ``None`` for a usable device.
+def container_image():
+    """Return the image reference :func:`hilclaw.cuda_image.read_image` gives (C1, C2).
 
-    Raises :class:`hilclaw.tools.ToolFailure` ``device_unavailable`` with the
-    probe's message for every other outcome of
-    :func:`hilclaw.cuda_adapter.check_device`, which is given
-    :data:`DEVICE_QUERY_TIMEOUT_S`. An exception that function lets pass
-    passes as it is.
+    Raises :class:`hilclaw.tools.ToolFailure` ``compiler_unavailable`` where
+    no image is named (the answer of
+    :func:`hilclaw.standin_answer.read_image_value`) or the value is refused
+    (:class:`hilclaw.cuda_image.ImageRefusedError`); lets pass anything else.
     """
-    outcome = cuda_adapter.check_device(timeout_s=DEVICE_QUERY_TIMEOUT_S)
+    try:
+        value = cuda_image.read_image()
+    except cuda_image.ImageRefusedError:
+        raise tools.ToolFailure(
+            check_failure.KIND_COMPILER_UNAVAILABLE, _IMAGE_REFUSED
+        ) from None
+    answer = standin_answer.read_image_value(value)
+    if answer is not standin_answer.GO_ON:
+        raise tools.ToolFailure(answer.kind, answer.message)
+    return value
+
+
+def confirm_device(image, build_dir, outcomes):
+    """Run the device check of ADR-0207 decision 6 in a probe container; return ``None`` for a usable device.
+
+    :func:`hilclaw.cuda_adapter.check_device_in_container` with ``image``,
+    ``build_dir``, :data:`DEVICE_QUERY_TIMEOUT_S` and
+    :data:`hilclaw.standin_check.REMOVAL_TIMEOUT_S`; what its container gave
+    is appended to ``outcomes``. Raises
+    :class:`hilclaw.standin_check.Answered` with the
+    :class:`hilclaw.standin_answer.Failure` ``device_unavailable`` and the
+    probe's message for every outcome but a usable device; lets pass what
+    that function lets pass.
+    """
+    outcome = cuda_adapter.check_device_in_container(
+        image,
+        build_dir,
+        timeout_s=DEVICE_QUERY_TIMEOUT_S,
+        removal_timeout_s=standin_check.REMOVAL_TIMEOUT_S,
+        outcomes=outcomes,
+    )
     if outcome.form != vendor_adapter.GO_ON:
-        raise tools.ToolFailure(outcome.kind, outcome.message)
+        raise standin_check.Answered(
+            standin_answer.Failure(outcome.kind, outcome.message)
+        )
 
 
 def select_sources(sources, output_path):
@@ -250,91 +297,115 @@ def _regular_file(path):
         return False
 
 
-def build_executable(target, sources, executable, keeper):
-    """Build ``sources`` into ``executable`` with ``nvcc`` at ``target``; return ``None`` when it was built.
+def place_sources(sources, output_path, program, build_dir, further=()):
+    """Copy the selected kernel files, ``program`` and ``further`` into ``build_dir``; return the :class:`hilclaw.standin_copies.Copies`.
 
-    The call is :func:`hilclaw.cuda_adapter.assemble_build`'s, carried out by
-    :func:`hilclaw.clang_build.build`. Where the compiler ran and ended, the
-    keeper is handed its log before anything else is read (ADR-0078
-    decision 2): that of a returned :class:`hilclaw.clang_build.BuildResult`,
-    and for an error a row places, that of the build it carries as ``result``
-    or the ``log`` of a :class:`hilclaw.clang_build.CompilerRunError`. Returns ``"build_time_limit"`` or
-    ``"build_exit_status"``; raises :class:`hilclaw.tools.ToolFailure` of the
-    kind :func:`hilclaw.check_build.read_build` or
-    :func:`hilclaw.check_build.place_error` gives (ADR-0060 decision 4) with a
-    fixed message. An error no row places passes as it is, and a returned
-    build no row holds raises :class:`RuntimeError`.
+    The files are those :func:`select_sources` gives for ``sources`` and
+    ``output_path`` (whose answers pass), copied with ``program`` by
+    :func:`hilclaw.standin_copies.place_selected_copies`; each harness
+    program of ``further`` is then copied beside ``program``
+    (:func:`hilclaw.standin_copies.place_harness_copy`). What a copy raises
+    is placed by :func:`hilclaw.standin_answer.place_error` at
+    :data:`hilclaw.standin_answer.COPIES` and raised as
+    :class:`hilclaw.standin_check.Answered`; what no row places passes.
     """
-    call = cuda_adapter.assemble_build(target, sources, executable)
-    try:
-        result = clang_build.build(
-            call.sources,
-            call.output,
-            timeout_s=call.timeout_s,
-            flags=call.flags,
-            trailing_flags=call.trailing_flags,
-            compiler=call.compiler,
-            env=call.env,
-        )
-    except Exception as error:
-        answer = check_build.place_error(error)
-        if answer is None:
-            raise
-        log = _carried_log(error)
-        if log is not None:
-            keeper.hand_over(log)
-    else:
-        keeper.hand_over(result.log)
-        answer = check_build.read_build(result)
-        if answer is None:
-            raise RuntimeError(_NO_STATUS)
-    if answer is check_build.BUILT:
-        return None
-    if answer in _CONDITIONS:
-        return answer
-    raise tools.ToolFailure(answer, _BUILD_MESSAGES[answer])
-
-
-def _carried_log(error):
-    carried = getattr(error, "result", None)
-    if type(carried) is clang_build.BuildResult:
-        return carried.log
-    if isinstance(error, clang_build.CompilerRunError) and type(error.log) is str:
-        return error.log
-    return None
-
-
-def carry_out(
-    target, sources, output_path, keeper, *, program, executable_name, prefix, run
-):
-    """Carry out the device check, the selection, the build and ``run`` in a build directory of its own.
-
-    In order: :func:`confirm_device`; :func:`select_sources`; a build
-    directory with ``prefix`` (:func:`hilclaw.standin_check.make_build_dir`);
-    :func:`build_executable` of ``program`` followed by the selected files
-    into ``executable_name`` there; then ``run(executable)`` with the
-    executable's path, whose answer is returned. A condition of the build is
-    returned without ``run``. The build directory is removed
-    (:func:`hilclaw.standin_check.remove_build_dir`) before this returns or
-    raises.
-    """
-    confirm_device()
     selected = select_sources(sources, output_path)
-    build_dir = standin_check.make_build_dir(prefix)
     try:
-        executable = os.path.join(build_dir, executable_name)
-        built = build_executable(target, (program, *selected), executable, keeper)
-        if built is not None:
-            return built
-        return run(executable)
-    finally:
-        standin_check.remove_build_dir(build_dir)
+        copies = standin_copies.place_selected_copies(selected, program, build_dir)
+        for harness in further:
+            standin_copies.place_harness_copy(harness, build_dir)
+    except Exception as error:
+        answer = standin_answer.place_error(error, standin_answer.COPIES)
+        if type(answer) is not standin_answer.Failure:
+            raise
+        raise standin_check.Answered(answer) from None
+    return copies
 
 
-def _verify(target, executable, arguments, limit):
-    outcome = cuda_adapter.run(target, executable, arguments, timeout_s=limit)
-    if outcome.form == vendor_adapter.GO_ON:
-        return outcome.carried
-    if outcome.form == vendor_adapter.BROKEN:
-        return outcome.condition
-    raise tools.ToolFailure(outcome.kind, outcome.message)
+def build_in_container(
+    outcomes, image, build_dir, command, timeout_s, *, keeper, executable, missing
+):
+    """Run ``nvcc`` with ``command`` in one build container with ``--gpus all`` and read it.
+
+    :func:`hilclaw.standin_check.run_build` with the compiler
+    :data:`hilclaw.cuda_adapter.PROGRAM` and ``gpus`` true (ADR-0207
+    decision 7), its arguments otherwise as given, and its answers.
+    """
+    return standin_check.run_build(
+        outcomes,
+        image,
+        build_dir,
+        command,
+        timeout_s,
+        keeper=keeper,
+        executable=executable,
+        missing=missing,
+        compiler=cuda_adapter.PROGRAM,
+        gpus=True,
+    )
+
+
+def run_process(
+    outcomes, image, build_dir, program, arguments, timeout_s, memory_limit_bytes
+):
+    """Run ``program`` in one process container with ``--gpus all``; return what :func:`hilclaw.standin_check.run_container` gives.
+
+    The step is :data:`hilclaw.standin_answer.PROCESS`; ``memory_limit_bytes``
+    is handed on as it is (ADR-0193 decision 4).
+    """
+    return standin_check.run_container(
+        outcomes,
+        standin_answer.PROCESS,
+        image,
+        build_dir,
+        program,
+        arguments,
+        timeout_s,
+        memory_limit_bytes=memory_limit_bytes,
+        gpus=True,
+    )
+
+
+def _carry_out(
+    target, sources, image, build_dir, output_path, keeper, arguments, limit, outcomes
+):
+    confirm_device(image, build_dir, outcomes)
+    copies = place_sources(
+        sources, output_path, cuda_programs.VERIFICATION_PROGRAM_SOURCE, build_dir
+    )
+    built = build_in_container(
+        outcomes,
+        image,
+        build_dir,
+        (
+            *target.flags,
+            *(
+                standin_check.in_container(source)
+                for source in (copies.harness, *copies.compiled_set)
+            ),
+            *target.trailing_flags,
+            "-o",
+            _EXECUTABLE,
+        ),
+        target.build_time_limit_s,
+        keeper=keeper,
+        executable=EXECUTABLE_NAME,
+        missing=_NO_EXECUTABLE,
+    )
+    if built is not standin_answer.GO_ON:
+        return built
+    ran = run_process(
+        outcomes,
+        image,
+        build_dir,
+        _EXECUTABLE,
+        arguments,
+        limit,
+        target.memory_limit_bytes,
+    )
+    if type(ran) is str:
+        return ran
+    answer = standin_answer.read_process(ran)
+    if answer is standin_answer.GO_ON:
+        return ran.stdout
+    return standin_check.settled(answer)
