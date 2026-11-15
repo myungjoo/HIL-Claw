@@ -2,7 +2,7 @@
 id: T-0576
 title: PLAN P3-16 (5a) — ADR-0207 slice 5, first half: install the NVIDIA Container Toolkit and pull the CUDA image on this machine, add the `--gpus all` option to the container start, the `cuda_gpu` image variable and the device check in a probe container, checked on the real GPU
 phase: P3
-status: BLOCKED
+status: IN_PROGRESS
 commitMode: code
 coversReq: [D31, "PLAN P3-16", "ADR-0207", "HQ-0095", "HQ-0096", "HQ-0097", FR-10, FR-19, OD-33, OD-14, NFR-4]
 dependsOn: []
