@@ -58,6 +58,16 @@ Each job has the three parts of :mod:`hilclaw.vendor_adapter`:
   :func:`check_device` joins the query and that reading. An operation calls
   it before the attempt's process is started; a device lost after it went
   on is that process's run failure (ADR-0194 decision 3).
+* **device check in a probe container** (ADR-0207 decisions 6 and 7):
+  :func:`check_device_in_container` runs the same query in one new container
+  of the ``cuda_gpu`` image with ``--gpus all``
+  (:func:`hilclaw.standin_container.run_in_container`) and
+  :func:`interpret_device_container_probe` reads it. The query holds no code
+  of an attempt, so the client's statuses 125 to 127 are the container
+  runtime's, as for a build container (ADR-0168 decision 3): 125 (a container
+  that cannot be given the GPU, or an image absent under ``--pull never``),
+  126 and 127, like a start that fails before any container, mean the
+  operation cannot confirm a usable device, ``device_unavailable``.
 
 The program of a build, a probe or a device query is the argument
 ``program``, whose default is the module's constant, as in
@@ -66,7 +76,7 @@ there (ADR-0194 decision 6). Argument checks raise :class:`TypeError` or
 :class:`ValueError` with the attribute ``parameter`` naming the argument.
 No ``Target`` entry, backend or tool is attached here, and no version is
 written anywhere. The module imports :mod:`hilclaw.check_failure` for the
-kind of the device check only.
+kind of the device check only, and names no image.
 """
 
 from hilclaw import (
@@ -74,6 +84,7 @@ from hilclaw import (
     clang_adapter,
     local_run,
     run_parameters,
+    standin_container,
     vendor_adapter,
 )
 from hilclaw.harness import timing
@@ -91,6 +102,17 @@ _NO_DEVICE_STATUSES = (6, 9, 12)
 _DEVICE_FOUND = "the device query named a device and its driver"
 _DEVICE_ABSENT = "the device query program was not found or could not be started"
 _DEVICE_NO_LINE = "the device query printed no device line it could read"
+_DEVICE_CONTAINER_FAILED = (
+    "the device query's container could not be started or given the GPU"
+)
+_DEVICE_NOT_IN_IMAGE = (
+    "the device query program was not found or could not be started in the image"
+)
+_DEVICE_NOT_STARTED = (
+    "the device query's container client could not be started or failed"
+)
+_CLIENT_FAILED = 125
+_NOT_IN_IMAGE = (126, 127)
 _DEVICE_FAILED = {
     vendor_adapter.TIME_LIMIT: "the device query did not end within its time limit",
     vendor_adapter.EXIT_STATUS: "the device query ended with another non-zero status or by a signal",
@@ -379,3 +401,109 @@ def check_device(*, timeout_s, program=DEVICE_PROGRAM):
     :func:`interpret_device_probe` does not place is raised unchanged.
     """
     return device_outcome(device_probe(timeout_s=timeout_s, program=program))
+
+
+def interpret_device_container_probe(answer):
+    """Return the :class:`hilclaw.vendor_adapter.Probe` of the device query run in a probe container.
+
+    ``answer`` is the :class:`hilclaw.standin_container.ContainerResult` or
+    the exception of :func:`hilclaw.standin_container.run_in_container` for
+    the query of :func:`assemble_device_probe`. Past the limit,
+    :data:`~hilclaw.vendor_adapter.UNREADABLE`; status 0, read as
+    :func:`interpret_device_probe` reads it; 6, 9 or 12,
+    :data:`~hilclaw.vendor_adapter.ABSENT` with :data:`NO_DEVICE`; 125, the
+    client's own failure (among others a container that cannot be given the
+    GPU and an image not in the store), and 126 or 127, the query program
+    not found or not invokable in the image,
+    :data:`~hilclaw.vendor_adapter.ABSENT`; any other status,
+    :data:`~hilclaw.vendor_adapter.UNREADABLE`. A
+    :class:`hilclaw.local_run.ProgramNotFoundError` (no client),
+    :class:`OSError` or :class:`hilclaw.standin_container.NoNumericUserError`
+    is :data:`~hilclaw.vendor_adapter.ABSENT`; any other exception, the
+    argument errors of ``run_in_container`` included, gives ``None``. Every
+    message is a fixed text that shows no path, image or name (ADR-0060
+    decision 5). A status that is not exactly an ``int`` raises
+    :class:`ValueError`; any other value raises :class:`TypeError` with
+    ``parameter`` ``"answer"``.
+    """
+    if isinstance(answer, BaseException):
+        if isinstance(
+            answer,
+            (
+                local_run.ProgramNotFoundError,
+                OSError,
+                standin_container.NoNumericUserError,
+            ),
+        ):
+            return vendor_adapter.Probe(
+                vendor_adapter.ABSENT, None, _DEVICE_NOT_STARTED
+            )
+        return None
+    if type(answer) is not standin_container.ContainerResult:
+        error = TypeError(
+            "answer must be ContainerResult or an exception, "
+            f"not {type(answer).__name__}"
+        )
+        error.parameter = "answer"
+        raise error
+    if answer.timed_out:
+        return vendor_adapter.Probe(
+            vendor_adapter.UNREADABLE, None, _DEVICE_FAILED[vendor_adapter.TIME_LIMIT]
+        )
+    status = answer.returncode
+    if type(status) is not int:
+        raise ValueError(
+            "no row holds a container that did not time out and has no status"
+        )
+    if status == 0:
+        return _devices(answer.stdout)
+    if status == _CLIENT_FAILED:
+        return vendor_adapter.Probe(
+            vendor_adapter.ABSENT, None, _DEVICE_CONTAINER_FAILED
+        )
+    if status in _NOT_IN_IMAGE:
+        return vendor_adapter.Probe(vendor_adapter.ABSENT, None, _DEVICE_NOT_IN_IMAGE)
+    if status in _NO_DEVICE_STATUSES:
+        return vendor_adapter.Probe(vendor_adapter.ABSENT, None, NO_DEVICE)
+    return vendor_adapter.Probe(
+        vendor_adapter.UNREADABLE, None, _DEVICE_FAILED[vendor_adapter.EXIT_STATUS]
+    )
+
+
+def check_device_in_container(
+    image, build_dir, *, timeout_s, removal_timeout_s, client="docker"
+):
+    """Run the device query in a probe container and return the :class:`hilclaw.vendor_adapter.Outcome` of :func:`device_outcome`.
+
+    One container of ``image`` is started by
+    :func:`hilclaw.standin_container.run_in_container` with ``gpus=True``,
+    :data:`DEVICE_PROGRAM` and the query arguments of
+    :func:`assemble_device_probe`, ``timeout_s``, ``removal_timeout_s`` and
+    ``client``. The probe uses the caller's ``build_dir``, the build
+    directory of the operation it precedes, as the container's one bind
+    mount; it writes nothing there. What the container gave, or the
+    exception raised, is read by :func:`interpret_device_container_probe`:
+    a usable device is :data:`~hilclaw.vendor_adapter.GO_ON` carrying the
+    devices; everything else it places is the tool failure
+    ``device_unavailable`` (ADR-0207 decision 6). The argument errors of
+    ``run_in_container`` (:class:`TypeError` or :class:`ValueError` with
+    ``parameter``), raised before anything starts, and any exception it does
+    not place are raised unchanged.
+    """
+    try:
+        answer = standin_container.run_in_container(
+            image,
+            build_dir,
+            DEVICE_PROGRAM,
+            _DEVICE_QUERY,
+            timeout_s=timeout_s,
+            removal_timeout_s=removal_timeout_s,
+            client=client,
+            gpus=True,
+        )
+    except Exception as error:
+        found = interpret_device_container_probe(error)
+        if found is None:
+            raise
+        return device_outcome(found)
+    return device_outcome(interpret_device_container_probe(answer))

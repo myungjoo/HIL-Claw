@@ -626,3 +626,64 @@ def test_a_memory_bound_that_is_no_positive_int_is_refused_before_the_start(
     assert type(raised.value) is kind
     assert raised.value.parameter == "memory_limit_bytes"
     assert starts.calls == []
+
+
+# The GPU option (ADR-0207 decision 7)
+
+
+def test_gpus_adds_gpus_all_before_the_image_and_keeps_the_rest(starts, build_dir):
+    call(build_dir, "nvidia-smi", ["-L"], gpus=True)
+    ((command, options),) = starts.calls
+    before = command[: command.index("example/standin:1")]
+    assert option(command, "--gpus") == "all"
+    assert before.index("--gpus") < before.index("--entrypoint=")
+    without = [item for item in command if item not in ("--gpus", "all")]
+    assert_client_list(without, build_dir, "nvidia-smi", ["-L"])
+    assert options == {"timeout_s": 30, "env": None}
+
+
+def test_gpus_with_an_input_and_a_memory_bound(starts, build_dir):
+    call(build_dir, "/build/t", (), stdin_data=b"r", memory_limit_bytes=1, gpus=True)
+    ((command, options),) = starts.calls
+    assert option(command, "--gpus") == "all"
+    assert "--interactive" in command
+    assert option(command, "--memory") == "1"
+    assert options["stdin_data"] == b"r"
+
+
+def test_no_gpus_keeps_the_command_as_it_was(starts, build_dir):
+    call(build_dir, "/build/timing", ["1"])
+    call(build_dir, "/build/timing", ["1"], gpus=False)
+    first, second = (command for command, _ in starts.calls)
+    for command in (first, second):
+        assert "--gpus" not in command
+        assert_client_list(command, build_dir, "/build/timing", ["1"])
+    assert [item for item in first if not item.startswith(NAME_PREFIX)] == [
+        item for item in second if not item.startswith(NAME_PREFIX)
+    ]
+
+
+def test_gpus_past_the_limit_force_removes_the_container(starts, build_dir):
+    starts.answers += [result(timed_out=True), result(0)]
+    done = call(build_dir, gpus=True, timeout_s=5, removal_timeout_s=2)
+    _, remove_call = starts.calls
+    assert remove_call == (
+        ["docker", "rm", "--force", done.name],
+        {"timeout_s": 2, "env": None},
+    )
+
+
+@pytest.mark.parametrize("value", [1, 0, None, "all", "true", [True]])
+def test_gpus_that_is_no_bool_is_refused_before_the_start(starts, build_dir, value):
+    with pytest.raises(TypeError) as raised:
+        call(build_dir, gpus=value)
+    assert type(raised.value) is TypeError
+    assert raised.value.parameter == "gpus"
+    assert starts.calls == []
+
+
+def test_gpus_is_checked_before_the_numeric_user(starts, build_dir, monkeypatch):
+    monkeypatch.delattr(os, "getuid", raising=False)
+    with pytest.raises(TypeError) as raised:
+        call(build_dir, gpus="all")
+    assert raised.value.parameter == "gpus"

@@ -27,6 +27,15 @@ standard input is the null device unless the caller hands bytes for it; then
 decision 3, for the rows of a bf16 ``rope`` process). At the time limit the
 container is removed by its name, by force (``rm --force``, E5).
 
+A caller may ask for the host's GPUs with ``--gpus all``, the one GPU option
+of the NVIDIA Container Toolkit on WSL 2, for the containers of the target
+``cuda_gpu`` only (``ARCHITECTURE/decisions/ADR-0207-od33-cuda-target-demonstration.md``
+decision 7). For such a container ADR-0144's Q2 reads as amended there: the
+build directory is the only host path the operation chooses and the only
+writable one; the toolkit adds the GPU's device nodes, read-only mounts of
+the driver's user-space libraries and utilities and its hooks, and nothing
+else of the host. Every other option above stays as it is.
+
 What this module does not decide: what a tool answers where no container
 runtime, no image or no container can be had (ADR-0144 decision 7, OD-18
 sub-questions 18 and 19), so each such situation reaches the caller as a plain
@@ -103,6 +112,7 @@ def run_in_container(
     client="docker",
     stdin_data=None,
     memory_limit_bytes=None,
+    gpus=False,
 ):
     """Run ``program`` with ``arguments`` in one new container of ``image``.
 
@@ -124,7 +134,9 @@ def run_in_container(
     end of input at once. ``memory_limit_bytes`` is ``None``, the default,
     for no bound and no option, or an ``int`` above 0: then ``--memory <n>``
     and ``--memory-swap <n>`` with the same ``n`` are given before the image
-    (ADR-0193 decision 4).
+    (ADR-0193 decision 4). ``gpus`` is exactly a ``bool``, default
+    ``False`` for no option; ``True`` gives ``--gpus all`` before the image
+    (ADR-0207 decision 7), the other options unchanged.
 
     The client runs with the environment of the calling process. After a
     normal end, whatever the status, the client removed the container
@@ -148,7 +160,8 @@ def run_in_container(
     (:class:`TypeError`; a ``bytearray`` or ``memoryview`` included); a
     ``memory_limit_bytes`` that is neither ``None`` nor an ``int``, a
     ``bool`` included (:class:`TypeError`), or is not above 0
-    (:class:`ValueError`). Then :class:`NoNumericUserError` where the platform has no ``os.getuid``
+    (:class:`ValueError`); a ``gpus`` that is not exactly a ``bool``
+    (:class:`TypeError`). Then :class:`NoNumericUserError` where the platform has no ``os.getuid``
     or ``os.getgid``: a precondition of this function for the POSIX machines
     of C-7 1, not an answer of any tool. Then the :class:`OSError` of
     :func:`os.stat` on ``build_dir``, or :class:`NotADirectoryError`.
@@ -176,6 +189,8 @@ def run_in_container(
         _check_input(stdin_data)
     with _parameter("memory_limit_bytes"):
         bound = _memory_options(memory_limit_bytes)
+    with _parameter("gpus"):
+        devices = _gpu_options(gpus)
     user = _numeric_user()
     _check_directory(source)
     name = NAME_PREFIX + secrets.token_hex(16)
@@ -201,6 +216,7 @@ def run_in_container(
         "no-new-privileges=true",
         *(() if stdin_data is None else ("--interactive",)),
         *bound,
+        *devices,
         "--entrypoint=",
         image,
         program,
@@ -362,6 +378,12 @@ def _memory_options(value):
     if value < 1:
         raise ValueError(f"memory_limit_bytes must be above 0: {value!r}")
     return ("--memory", str(value), "--memory-swap", str(value))
+
+
+def _gpu_options(gpus):
+    if type(gpus) is not bool:
+        raise TypeError(f"gpus must be a bool, not {type(gpus).__name__}")
+    return ("--gpus", "all") if gpus else ()
 
 
 def _check_limit(value, what):
