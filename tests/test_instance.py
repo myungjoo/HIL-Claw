@@ -10472,3 +10472,44 @@ def test_a_version_3_file_is_read_by_the_strict_entry_first(root, monkeypatch):
     instance.read_as_version_1(root, RUN)
     instance.layout_version_of_kinded(root, RUN)
     assert calls == ["read", "read"]
+
+
+# --- the absent kind at every target (ADR-0208 decision 3) ---
+
+
+CUDA_RECORD = record(
+    "cuda_gpu",
+    revision="Example GPU sm_89",
+    toolchain={"nvcc": "x", "gcc": "y", "nvidia_driver": "1"},
+)
+
+
+@pytest.mark.parametrize(
+    "accelerator", ["cuda_gpu", "cpu_standin", "virtual_npu", mock_backend.NAME]
+)
+def test_a_version_3_file_without_a_kind_reads_c_kernel_at_every_target(accelerator):
+    profile = CUDA_RECORD if accelerator == "cuda_gpu" else record(accelerator)
+    document = given(profile=profile)
+
+    result = instance.parse_given(raw(document))
+
+    assert result.candidate_kind == "c_kernel" == instance.CANDIDATE_KINDS[0]
+    assert result.instance.hw_profile["accelerator"] == accelerator
+    assert instance.validate_given(document) is None
+
+
+def test_a_cuda_gpu_run_reads_c_kernel_from_its_file(root):
+    place(root, raw(given(profile=CUDA_RECORD)))
+    place(root, raw(doc(CUDA_RECORD)), f"runs/{OTHER_RUN}/instance.json")
+
+    assert instance.read_given(root, RUN).candidate_kind == "c_kernel"
+    assert instance.read_given(root, OTHER_RUN).candidate_kind == "c_kernel"
+    assert instance.candidate_kind_of(root, OTHER_RUN) == "c_kernel"
+    with pytest.raises(instance.UnsupportedVersionError):
+        instance.candidate_kind_of(root, RUN)
+
+
+@pytest.mark.parametrize("value", ["cuda_kernel", "cuda", "c_kernel"])
+def test_a_cuda_gpu_file_admits_no_other_kind_value(value):
+    with pytest.raises(InvalidInstanceError):
+        instance.validate_given(given(profile=CUDA_RECORD, candidate_kind=value))

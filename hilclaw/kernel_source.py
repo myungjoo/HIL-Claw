@@ -4,7 +4,20 @@
 decision 5 (N1, N2) fixes which file names are admitted and decision 3 (R1 to
 R8) fixes how a reader goes from the path of the ``output/`` of an attempt to
 the compiled set. :func:`is_admitted_name` is the first and
-:func:`read_compiled_set` the second. Who applies the reader, and to which
+:func:`read_compiled_set` the second.
+
+**The language of the target**
+(``ARCHITECTURE/decisions/ADR-0208-od33-cuda-kernel-record-in-a-run.md``
+decision 1, after the owner's HQ-0104 (a)): both take the keyword
+``language``, one of :data:`LANGUAGES`, by default ``"c"``. For ``"c"``
+everything below holds exactly as ADR-0055 states it. For ``"cuda"``, the
+language of the contracts of the target ``cuda_gpu``, N1 also admits a name
+ending in ``.cu`` (the same part before the dot, so 4 to 65 characters), and
+the compiled set is the kernel files whose name ends in ``.cu`` (R3): a
+``.c`` file is admitted and is a kernel file but is not compiled, and ``.h``
+stays the header suffix (R5). :func:`language_at` gives the language of the
+target of an ``accelerator``, which a caller that knows the run's target
+hands on; a caller that hands none reads as ADR-0055 says. Who applies the reader, and to which
 path, is ADR-0056 decision 3: the operation of a backend that builds, to the
 path the tool function forms with :func:`hilclaw.layout.attempt_artefact`.
 No tool and no backend operation applies the reader yet; :mod:`hilclaw.bring_in`
@@ -12,7 +25,9 @@ uses :func:`is_admitted_name`, :func:`hilclaw.standin_copies.place_copies`
 (ADR-0144 slice (2)) applies the reader to copy the kernel files it answers,
 and :func:`hilclaw.attempt_kernel.kernel_reference` applies it to the
 ``output/`` of a named attempt for a kernel reference of the model executor
-(ADR-0153 decision 3).
+(ADR-0153 decision 3); :func:`hilclaw.cuda_check.compiled_sources` applies
+it in the language ``cuda`` as the selection of the ``cuda_gpu`` operation,
+which no default table holds yet.
 
 :func:`read_compiled_set` has three outcomes. It returns a
 :class:`KernelSource` whose ``compiled_set`` is not empty and whose ``missing``
@@ -64,7 +79,12 @@ import stat
 from pathlib import Path
 from typing import NamedTuple
 
+from hilclaw import targets
+
 OUTPUT_NAME = "output"
+
+#: The languages the reader knows, each a language of the contract table (ADR-0208 decision 1).
+LANGUAGES = ("c", "cuda")
 
 NO_ATTEMPT_DIRECTORY = "no_attempt_directory"
 NO_OUTPUT_DIRECTORY = "no_output_directory"
@@ -80,7 +100,12 @@ READER_FAILURES = (
     ENTRY_KIND_UNDETERMINED,
 )
 
-_ADMITTED = re.compile(r"[a-z0-9][a-z0-9_-]{0,61}\.[ch]")
+_ADMITTED = {
+    "c": re.compile(r"[a-z0-9][a-z0-9_-]{0,61}\.[ch]"),
+    "cuda": re.compile(r"[a-z0-9][a-z0-9_-]{0,61}\.(?:[ch]|cu)"),
+}
+_COMPILED_SUFFIX = {"c": ".c", "cuda": ".cu"}
+_HEADER_SUFFIX = ".h"
 _RESERVED_STEMS = frozenset(
     ("con", "prn", "aux", "nul")
     + tuple(f"{device}{number}" for device in ("com", "lpt") for number in range(1, 10))
@@ -91,7 +116,7 @@ class KernelSource(NamedTuple):
     """Answer of :func:`read_compiled_set`.
 
     ``compiled_set`` holds the paths of the kernel files whose name ends in
-    ``.c``, each the given path joined with the listed name, in ascending byte
+    ``.c`` (``.cu`` for the language ``cuda``), each the given path joined with the listed name, in ascending byte
     order of the names (R3). ``missing`` is ``None`` when the set is not empty,
     else the one of :data:`NO_KERNEL_SOURCE_CASES` that says why it is empty.
     ``headers`` holds, formed and ordered the same way, the kernel files whose
@@ -118,31 +143,68 @@ class KernelSourceReadError(Exception):
         self.failure = failure
 
 
-def is_admitted_name(name):
+def is_admitted_name(name, *, language="c"):
     """Return whether ``name`` is an admitted file name (ADR-0055 decision 5).
 
-    N1: it matches ``[a-z0-9][a-z0-9_-]{0,61}\\.[ch]`` in full. N2: the part
-    before the dot is none of ``con``, ``prn``, ``aux``, ``nul``, ``com1`` to
-    ``com9`` and ``lpt1`` to ``lpt9``. Only the name is judged, never a file.
+    N1: it matches ``[a-z0-9][a-z0-9_-]{0,61}\\.[ch]`` in full, or for the
+    ``language`` ``"cuda"`` ``[a-z0-9][a-z0-9_-]{0,61}\\.(c|h|cu)``
+    (ADR-0208 decision 1). N2: the part before the dot is none of ``con``,
+    ``prn``, ``aux``, ``nul``, ``com1`` to ``com9`` and ``lpt1`` to
+    ``lpt9``. Only the name is judged, never a file.
+
+    Raises :class:`TypeError` for a ``language`` that is not a ``str`` and
+    :class:`ValueError` for one not in :data:`LANGUAGES`; nothing for
+    ``name``.
     """
-    if type(name) is not str or not _ADMITTED.fullmatch(name):
+    pattern = _ADMITTED[_checked_language(language)]
+    if type(name) is not str or not pattern.fullmatch(name):
         return False
-    return name[:-2] not in _RESERVED_STEMS
+    return name.rpartition(".")[0] not in _RESERVED_STEMS
 
 
-def read_compiled_set(output_path):
+def language_at(accelerator, table=targets.TABLE):
+    """Return the language of the kernel files of a run whose ``accelerator`` is ``accelerator``.
+
+    It is the language every contract of the :class:`hilclaw.targets.Target`
+    of ``accelerator`` in ``table`` is written in (ADR-0208 decision 1):
+    ``"cuda"`` for ``cuda_gpu``, ``"c"`` for ``cpu_standin`` and
+    ``virtual_npu``. Where ``table`` holds no target for ``accelerator``,
+    one it cannot look up included, the answer is ``"c"``, ADR-0055 as it
+    stands. Raises :class:`ValueError` for a target whose contracts are in
+    no language, in more than one, or in one not in :data:`LANGUAGES`; what
+    building the entry raises passes unchanged.
+    """
+    try:
+        held = targets.target(accelerator, table)
+    except targets.NoTargetError:
+        return LANGUAGES[0]
+    languages = {key[3] for key in held.contracts}
+    if len(languages) != 1 or not languages <= set(LANGUAGES):
+        raise ValueError(
+            f"the target of {accelerator!r} has no one language the reader "
+            f"knows: {sorted(languages)}"
+        )
+    return languages.pop()
+
+
+def read_compiled_set(output_path, *, language="c"):
     """Apply the reader of ADR-0055 decision 3 to the path of an ``output/``.
 
     Returns a :class:`KernelSource`. The ``output/`` is the entry of the parent
     of ``output_path`` that is listed as exactly ``output`` and is itself a
     directory (R1); its kernel files are the entries directly below it that
-    are themselves regular files under an admitted name (R2), those whose
-    name ends in ``.c`` are the compiled set (R3) and those whose name ends in
+    are themselves regular files under a name admitted for ``language`` (R2),
+    those whose name ends in ``.c`` (``.cu`` for ``"cuda"``, ADR-0208
+    decision 1) are the compiled set (R3) and those whose name ends in
     ``.h`` the headers (R5). A symbolic link is none of them.
 
-    Raises :class:`InvalidOutputPathError` for a value that is no path of an
-    ``output/`` and :class:`KernelSourceReadError` for a failure of the reader.
+    Raises, before anything is looked at, :class:`TypeError` or
+    :class:`ValueError` for a ``language`` as :func:`is_admitted_name` does
+    and :class:`InvalidOutputPathError` for a value that is no path of an
+    ``output/``; then :class:`KernelSourceReadError` for a failure of the
+    reader.
     """
+    language = _checked_language(language)
     output = _checked_output_path(output_path)
     try:
         listed = os.listdir(output.parent)
@@ -159,16 +221,25 @@ def read_compiled_set(output_path):
     kernel_files = sorted(
         name
         for name, mode in _modes(output, listed).items()
-        if stat.S_ISREG(mode) and is_admitted_name(name)
+        if stat.S_ISREG(mode) and is_admitted_name(name, language=language)
     )
-    compiled = [name for name in kernel_files if name.endswith(".c")]
+    suffix = _COMPILED_SUFFIX[language]
+    compiled = [name for name in kernel_files if name.endswith(suffix)]
     if not compiled:
         return KernelSource((), NO_COMPILED_FILE)
     return KernelSource(
         tuple(output / name for name in compiled),
         None,
-        tuple(output / name for name in kernel_files if name.endswith(".h")),
+        tuple(output / name for name in kernel_files if name.endswith(_HEADER_SUFFIX)),
     )
+
+
+def _checked_language(language):
+    if type(language) is not str:
+        raise TypeError(f"language must be a str, not {type(language).__name__}")
+    if language not in LANGUAGES:
+        raise ValueError(f"language must be one of {', '.join(LANGUAGES)}")
+    return language
 
 
 def _checked_output_path(value):
