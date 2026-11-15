@@ -13,6 +13,7 @@ from hilclaw import (
     artifacts,
     bring_in,
     cas,
+    cuda_image,
     events,
     given_attempt,
     given_eval,
@@ -797,6 +798,49 @@ def test_given_code_at_cuda_gpu_is_placed_as_given_cu_and_evaluated(
     output = layout.attempt_artefact(bench.root, run_id, 0, 1, 1, "output")
     assert sorted(p.name for p in output.iterdir()) == ["given.cu"]
     assert (output / "given.cu").read_bytes() == KERNEL
+    assert state_of(bench.root, run_id)["run_status"] == "over"
+
+
+@pytest.mark.skipif(GIT is None, reason="run.commit needs git")
+def test_the_real_check_tool_takes_a_given_cuda_gpu_run(bench, monkeypatch):
+    """ADR-0208 decisions 3 and 5: the kind-less version-3 run reaches the cuda_gpu operation."""
+    monkeypatch.delenv(cuda_image.ENV_IMAGE, raising=False)
+    bench.write(request(CUDA_PROFILE))
+    assert bench.main() == EXIT_STATUS["check_failed"]
+    summary = bench.summary()
+    run_id = summary["run_id"]
+    assert summary["sim"] == {
+        "failure": "compiler_unavailable",
+        "standing": "undetermined",
+    }
+    assert "board" not in summary and "timing" not in summary
+    told = bench.told()
+    assert [(t["step"], t["kind"]) for t in told] == [
+        ("correctness.check", "compiler_unavailable")
+    ]
+    steps = [line["data"]["step"] for line in events.read(bench.root, run_id).events]
+    assert steps == ["correctness_check_sim_v2", "correctness_check_sim_v2"]
+    assert state_of(bench.root, run_id)["run_status"] == "over"
+    assert git(bench.root, "status", "--porcelain", "--", "runs") == ""
+
+
+@pytest.mark.skipif(GIT is None, reason="run.commit needs git")
+def test_the_real_board_run_takes_a_given_cuda_gpu_run(bench, monkeypatch):
+    """ADR-0208 decisions 3 and 5: board.run of the kind-less version-3 run at cuda_gpu."""
+    monkeypatch.delenv(cuda_image.ENV_IMAGE, raising=False)
+    faked(
+        monkeypatch,
+        {"correctness.check": {"outcome": "pass"}, "checks.read": VERIFIED},
+    )
+    bench.write(request(CUDA_PROFILE))
+    assert bench.main() == EXIT_STATUS["board_run_failed"]
+    summary = bench.summary()
+    run_id = summary["run_id"]
+    assert summary["timing"] == {"failure": "compiler_unavailable"}
+    (told,) = bench.told()
+    assert (told["step"], told["kind"]) == ("board.run", "compiler_unavailable")
+    steps = [line["data"]["step"] for line in events.read(bench.root, run_id).events]
+    assert steps == ["board_run_timing_v3", "board_run_timing_v3"]
     assert state_of(bench.root, run_id)["run_status"] == "over"
 
 

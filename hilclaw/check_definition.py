@@ -33,7 +33,8 @@ run tools' operations of the table.
   decision 2) and no ``profiler.collect``, and ``cuda_gpu``
   (:data:`hilclaw.targets.CUDA_GPU`), offering the three with the container
   operations built with its target and the selection of the attempt's own
-  ``output/`` (``ARCHITECTURE/decisions/ADR-0208-od33-cuda-kernel-record-in-a-run.md``
+  ``output/``
+  (``ARCHITECTURE/decisions/ADR-0208-od33-cuda-kernel-record-in-a-run.md``
   decision 5) and no ``profiler.collect``.
 * :func:`definition`: the tool definition :func:`hilclaw.tools.default_registry`
   registers, the tool function bound to that table, to
@@ -55,13 +56,11 @@ imports :mod:`hilclaw.cuda_check`, :mod:`hilclaw.cuda_run`,
 :mod:`hilclaw.mock_check`, :mod:`hilclaw.mock_run`,
 :mod:`hilclaw.standin_check`, :mod:`hilclaw.standin_profile`,
 :mod:`hilclaw.standin_run` and :mod:`hilclaw.targets` when it is called; the
-tool function of a definition
-imports :mod:`hilclaw.check_tool`, builds the table and binds the tool
-function at its first call, and keeps that one bound function for its later
-calls. A
-first call whose import or binding raises keeps nothing, and the next call
-binds again; what it raises reaches the front as anything a tool function
-raises does.
+tool function of a definition imports :mod:`hilclaw.check_tool`, builds the
+table and binds the tool function at its first call, and keeps that one bound
+function for its later calls. A first call whose import or binding raises
+keeps nothing, and the next call binds again; what it raises reaches the
+front as anything a tool function raises does.
 
 What the module does not do: it registers nothing; the registration is
 :func:`hilclaw.tools.default_registry`'s. No request, option or environment
