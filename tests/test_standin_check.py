@@ -751,6 +751,62 @@ def test_run_build_without_a_keeper_hands_over_nothing(client, temporary):
     assert len(outcomes) == 1
 
 
+def test_run_build_runs_the_compiler_given_with_the_gpus(client, temporary):
+    directory = standin_check.make_build_dir("hilclaw-test-")
+    client.script = [built()]
+    answer = standin_check.run_build(
+        [],
+        IMAGE,
+        directory,
+        ("x.cu",),
+        5,
+        keeper=None,
+        executable=standin_check.EXECUTABLE_NAME,
+        missing=None,
+        compiler="nvcc",
+        gpus=True,
+    )
+    assert answer is standin_check.standin_answer.GO_ON
+    (command,) = client.runs()
+    assert command[command.index(IMAGE) - 3 : command.index(IMAGE) + 3] == [
+        "--gpus",
+        "all",
+        "--entrypoint=",
+        IMAGE,
+        "nvcc",
+        "x.cu",
+    ]
+
+
+def test_run_build_and_run_container_add_no_gpu_option_by_default(client, temporary):
+    directory = standin_check.make_build_dir("hilclaw-test-")
+    client.script = [built(), ended(0)]
+    standin_check.run_build(
+        [],
+        IMAGE,
+        directory,
+        ("x.c",),
+        5,
+        keeper=None,
+        executable=standin_check.EXECUTABLE_NAME,
+        missing=None,
+    )
+    standin_check.run_container([], "process", IMAGE, directory, "/p", (), 5)
+    build, process = client.runs()
+    assert build[build.index(IMAGE) + 1] == standin_check.COMPILER
+    assert "--gpus" not in build and "--gpus" not in process
+
+
+def test_run_container_lets_a_refused_gpus_value_pass(client, temporary):
+    outcomes = []
+    with pytest.raises(TypeError) as raised:
+        standin_check.run_container(
+            outcomes, "process", IMAGE, str(temporary), "/p", (), 5, gpus=1
+        )
+    assert raised.value.parameter == "gpus"
+    assert client.calls == []
+
+
 def test_container_image(monkeypatch):
     assert standin_check.container_image() == IMAGE
     monkeypatch.delenv(standin_image.ENV_IMAGE)

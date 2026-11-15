@@ -21,6 +21,13 @@ from its bytes in place of the copy of a read program
 first, as the waiter's source of ADR-0145 decision 3 is copied with the timing
 driver (ADR-0170).
 
+:func:`place_selected_copies` places the same two kinds of copies for kernel
+files the caller selected instead of the reader's compiled set, as the
+``cuda_gpu`` operations of :mod:`hilclaw.cuda_check` and
+:mod:`hilclaw.cuda_run` copy the files their selection names (ADR-0207
+decision 9, slice 5): which files of an attempt a CUDA kernel is stays the
+caller's.
+
 Conventions of this module, which are not rules of the record:
 
 - The kernel sub-directory is :data:`KERNEL_DIR` directly below the build
@@ -195,6 +202,55 @@ def place_copies(output_path, harness_program, build_dir, harness_text=None):
         harness_name,
         None,
     )
+
+
+def place_selected_copies(sources, harness_program, build_dir):
+    """Copy the kernel files ``sources`` and ``harness_program`` into ``build_dir``.
+
+    As :func:`place_copies`, except that the kernel files are ``sources``, a
+    non-empty ``tuple`` or ``list`` of paths (``str`` or :class:`os.PathLike`
+    of ``str``) given by the caller, and no reader is applied: each is
+    copied below :data:`KERNEL_DIR` under its basename, in the given order,
+    and is the ``compiled_set`` of the returned :class:`Copies`, whose
+    ``headers`` is empty. Two sources of the same basename meet the second
+    copy's :data:`ENTRY_EXISTS`.
+
+    Raises, before the file system is looked at, :class:`TypeError` or
+    :class:`ValueError` with ``parameter`` ``"sources"`` for ``sources`` of
+    another type, empty, or with a path that is not a ``str`` path, holds
+    NUL or has the basename ``""``, ``.`` or ``..``; and as
+    :func:`place_copies` for ``harness_program`` and ``build_dir``. Then
+    :class:`CopyError` as :func:`place_copies` does.
+    """
+    harness_program, harness_name, build_dir = _check(harness_program, build_dir)
+    with _parameter("sources"):
+        paths = _sources(sources)
+    _check_build_directory(build_dir)
+    harness = _read(harness_program, harness=True)
+    kernel = [(os.path.basename(path), _read(path, harness=False)) for path in paths]
+    kernel_dir = os.path.join(build_dir, KERNEL_DIR)
+    with _writing():
+        os.mkdir(kernel_dir)
+        for name, data in kernel:
+            _write_new(os.path.join(kernel_dir, name), data)
+        _write_new(os.path.join(build_dir, harness_name), harness)
+    return Copies(
+        tuple(f"{KERNEL_DIR}/{name}" for name, _ in kernel), (), harness_name, None
+    )
+
+
+def _sources(sources):
+    if type(sources) not in (tuple, list):
+        raise TypeError(
+            f"sources must be a tuple or list, not {type(sources).__name__}"
+        )
+    if not sources:
+        raise ValueError("sources must name at least one file")
+    paths = tuple(_path_text(path, "a source") for path in sources)
+    for path in paths:
+        if os.path.basename(path) in ("", ".", ".."):
+            raise ValueError("a source must have a file name")
+    return paths
 
 
 def place_harness_copy(harness_program, build_dir):

@@ -1,5 +1,4 @@
-import sys
-from pathlib import Path
+import os
 
 import pytest
 import test_cuda_check as checks
@@ -11,20 +10,43 @@ from hilclaw import (
     cuda_run,
     local_run,
     run_operation,
+    standin_run,
     standin_settings,
     targets,
-    tools,
 )
-from hilclaw.harness import cuda_programs, memory_ceiling, timing
+from hilclaw.harness import cuda_programs, timing
 from hilclaw.run_parameters import Bf16TimingParameters, TimingParameters
 
 PARAMETERS = TimingParameters(m=5, k=33, n=7, n_max=20, sample_form="interval", seed=99)
 RUN_TOOLS = ("sim.run", "board.run")
-posix_only = checks.posix_only
-stubs = checks.stubs
+INSIDE = checks.INSIDE
+IMAGE = checks.IMAGE
+REPORT = b"resolution_ns 1\ninterval_ns 5"
+client = checks.client
 build_root = checks.build_root
 kernel = checks.kernel
 gpu = checks.gpu
+ended = checks.ended
+timed_out = checks.timed_out
+raises = checks.raises
+probed = checks.probed
+inner = checks.inner
+
+
+def timing_built(**kwargs):
+    return checks.built(cuda_run.TIMING_EXECUTABLE_NAME, **kwargs)
+
+
+def waiter_built(**kwargs):
+    return checks.built(cuda_run.WAITER_EXECUTABLE_NAME, **kwargs)
+
+
+def waited(report=REPORT, line=b"waiter_max_rss_kib 300", status=0):
+    return ended(status, stdout=report + b"\n" + line + b"\n", stderr=b"proc")
+
+
+def happy():
+    return [probed(), timing_built(), waiter_built(), waited()]
 
 
 def operation(kernel, target=None):
@@ -40,9 +62,10 @@ def call(op, parameters=PARAMETERS, keeper=None):
 
 
 def failure_of(op, kind, **kwargs):
-    with pytest.raises(tools.ToolFailure) as raised:
+    with pytest.raises(checks.tools.ToolFailure) as raised:
         call(op, **kwargs)
     assert raised.value.kind == kind
+    assert IMAGE not in raised.value.message
     return raised.value
 
 
@@ -52,28 +75,31 @@ def failure_of(op, kind, **kwargs):
 def test_the_public_names_of_the_module():
     public = {name for name in vars(cuda_run) if not name.startswith("_")}
     imported = {
-        "sys",
-        "cuda_adapter",
+        "monotonic",
         "cuda_check",
-        "local_run",
+        "run_failure",
         "run_parameters",
+        "standin_answer",
+        "standin_check",
+        "standin_run",
         "standin_settings",
-        "tools",
-        "vendor_adapter",
+        "standin_waiter_line",
         "cuda_programs",
-        "memory_ceiling",
         "timing",
     }
     assert public - imported == {
         "TIMING_EXECUTABLE_NAME",
+        "WAITER_EXECUTABLE_NAME",
         "BUILD_DIR_PREFIX",
         "operation_for",
     }
 
 
-def test_the_module_reads_no_attempt_file_name():
+def test_the_module_reads_no_attempt_file_name_and_runs_nothing_on_the_host():
     assert not {"kernel_source", "attempt_kernel"} & set(vars(cuda_run))
-    assert "HQ-0104" in cuda_run.__doc__ and "test-only" in cuda_run.__doc__
+    assert not {"local_run", "cuda_adapter", "memory_ceiling"} & set(vars(cuda_run))
+    assert "HQ-0104" in cuda_run.__doc__ and "in containers" in cuda_run.__doc__
+    assert "test-only" not in cuda_run.__doc__
 
 
 # operation_for
@@ -88,7 +114,6 @@ def test_operation_for_refuses_what_cuda_check_refuses(kernel):
         cuda_run.operation_for(checks.the_target())
 
 
-@posix_only
 @pytest.mark.parametrize(
     ("parameters", "keeper", "error"),
     [
@@ -102,7 +127,7 @@ def test_operation_for_refuses_what_cuda_check_refuses(kernel):
     ],
 )
 def test_refused_arguments_start_nothing(
-    stubs, build_root, kernel, parameters, keeper, error
+    client, build_root, kernel, parameters, keeper, error
 ):
     with pytest.raises(error):
         operation(kernel)(
@@ -112,46 +137,85 @@ def test_refused_arguments_start_nothing(
             "out",
             build_log.LogKeeper() if keeper is None else keeper,
         )
-    assert stubs.calls() == []
+    assert client.calls == []
     assert list(build_root.iterdir()) == []
 
 
-# With stub programs
-
-
-@posix_only
-def test_no_usable_device_is_device_unavailable_before_anything_else(
-    stubs, build_root, kernel
+def test_no_image_is_compiler_unavailable_before_anything(
+    monkeypatch, client, build_root, kernel
 ):
-    stubs.set("nvidia-smi", status=6)
+    monkeypatch.delenv(checks.cuda_image.ENV_IMAGE)
+    failure_of(operation(kernel), check_failure.KIND_COMPILER_UNAVAILABLE)
+    assert client.calls == []
+    assert list(build_root.iterdir()) == []
+
+
+# With the stub client
+
+
+@pytest.mark.parametrize("answer", [ended(6), ended(125), timed_out()])
+def test_no_usable_device_is_device_unavailable_before_any_build(
+    client, build_root, kernel, answer
+):
+    client.script = [answer]
     keeper = build_log.LogKeeper()
     failure_of(operation(kernel), check_failure.KIND_DEVICE_UNAVAILABLE, keeper=keeper)
-    assert stubs.names() == ["nvidia-smi"] and keeper.held() is None
+    assert len(client.runs()) == 1 and keeper.held() is None
     assert list(build_root.iterdir()) == []
 
 
-@posix_only
-def test_a_built_timing_driver_is_run_and_its_report_and_host_figure_returned(
-    stubs, build_root, kernel
+def test_the_timing_process_runs_under_the_waiter_in_gpu_containers(
+    client, build_root, kernel
 ):
-    stubs.set("nvcc", program=checks.program(), stderr="a warning\n")
+    seen = {}
+    client.script = [probed(), timing_built(seen=seen), waiter_built(), waited()]
     keeper = build_log.LogKeeper()
-    report, figure = call(operation(kernel), keeper=keeper)
-    assert report == checks.REPORT.encode()
-    assert figure is None or (type(figure) is int and figure >= 1)
-    _, build, run = stubs.calls()
+    assert call(operation(kernel), keeper=keeper) == (REPORT, 300 * 1024)
+    assert keeper.held() == (checks.BUILD_STDOUT + checks.BUILD_STDERR).decode()
+    probe, build, waiter, process = client.runs()
+    checks.assert_gpu_containers(client)
+    assert inner(probe)[0] == "nvidia-smi"
     target = checks.the_target()
-    sources = build[1 + len(target.flags) : -2]
-    assert sources == [str(cuda_programs.TIMING_DRIVER_SOURCE), str(kernel)]
-    assert Path(run[1]).name == cuda_run.TIMING_EXECUTABLE_NAME
-    assert Path(run[1]).parent.name.startswith(cuda_run.BUILD_DIR_PREFIX)
-    assert tuple(run[2:]) == timing.driver_arguments(**PARAMETERS._asdict())
-    assert "a warning" in keeper.held()
+    assert inner(build) == [
+        "nvcc",
+        *target.flags,
+        f"{INSIDE}/{cuda_programs.TIMING_DRIVER_SOURCE.name}",
+        f"{INSIDE}/kernel/kernel.cu",
+        *target.trailing_flags,
+        "-o",
+        f"{INSIDE}/timing",
+    ]
+    assert inner(waiter) == [
+        "nvcc",
+        *target.waiter_flags,
+        f"{INSIDE}/timing_waiter.c",
+        "-o",
+        f"{INSIDE}/waiter",
+    ]
+    assert inner(process) == [
+        f"{INSIDE}/waiter",
+        f"{INSIDE}/timing",
+        *timing.driver_arguments(**PARAMETERS._asdict()),
+    ]
+    assert seen["timing_waiter.c"] == standin_run.WAITER_SOURCE.read_bytes()
+    assert "--memory" not in process
+    options = client.options()
+    assert options[0]["timeout_s"] == checks.cuda_check.DEVICE_QUERY_TIMEOUT_S
+    assert options[1]["timeout_s"] == target.build_time_limit_s
+    assert 0 < options[2]["timeout_s"] <= target.build_time_limit_s
+    assert options[3]["timeout_s"] == standin_settings.timing_process_time_limit_s(
+        5, 33, 7, 20, target.process_time_limit_cap_s
+    )
+    assert os.path.basename(checks.mount_source(build)).startswith(
+        cuda_run.BUILD_DIR_PREFIX
+    )
     assert list(build_root.iterdir()) == []
 
 
-@posix_only
-def test_the_answer_is_the_form_a_of_run_operation(stubs, build_root, kernel, tmp_path):
+def test_the_answer_is_the_form_a_of_run_operation(
+    client, build_root, kernel, tmp_path
+):
+    client.script = happy()
     answer = run_operation.ask(
         operation(kernel),
         "r",
@@ -162,84 +226,126 @@ def test_the_answer_is_the_form_a_of_run_operation(stubs, build_root, kernel, tm
         log_path=tmp_path / "log.txt",
     )
     assert type(answer) is run_operation.Reported
-    assert answer.report == checks.REPORT.encode()
+    assert (answer.report, answer.memory_bytes) == (REPORT, 300 * 1024)
     assert (tmp_path / "log.txt").is_file()
 
 
-@posix_only
+def test_the_none_line_gives_no_figure(client, build_root, kernel):
+    client.script = [*happy()[:3], waited(line=b"waiter_max_rss none")]
+    assert call(operation(kernel)) == (REPORT, None)
+
+
+def test_a_memory_limit_of_the_target_bounds_only_the_timing_process(
+    client, build_root, kernel
+):
+    client.script = happy()
+    call(operation(kernel, checks.the_target(memory_limit_bytes=2**30)))
+    *others, process = client.runs()
+    assert all("--memory" not in command for command in others)
+    assert process[process.index("--memory") + 1] == str(2**30)
+
+
 @pytest.mark.parametrize(
-    ("conf", "answer"),
-    [({"status": 1}, "build_exit_status"), ({"sleep": 5}, "build_time_limit")],
+    ("answer", "condition"),
+    [(ended(1), "build_exit_status"), (timed_out(), "build_time_limit")],
 )
-def test_a_build_that_fails_is_its_condition(stubs, build_root, kernel, conf, answer):
-    stubs.set("nvcc", **conf)
+def test_a_timing_build_that_fails_is_its_condition_with_no_waiter_build(
+    client, build_root, kernel, answer, condition
+):
+    client.script = [probed(), answer]
     keeper = build_log.LogKeeper()
-    op = operation(kernel, checks.the_target(build_time_limit_s=1))
-    assert call(op, keeper=keeper) == answer
-    assert type(keeper.held()) is str
+    assert call(operation(kernel), keeper=keeper) == condition
+    assert type(keeper.held()) is str and len(client.runs()) == 2
     assert list(build_root.iterdir()) == []
 
 
-@posix_only
+def test_a_timing_build_with_no_executable_is_build_output_missing(
+    client, build_root, kernel
+):
+    client.script = [probed(), timing_built(executable=False)]
+    failure = failure_of(operation(kernel), check_failure.KIND_BUILD_OUTPUT_MISSING)
+    assert "timing" in failure.message
+    assert list(build_root.iterdir()) == []
+
+
 @pytest.mark.parametrize(
-    ("conf", "answer"),
-    [({"status": 1}, "exit_status"), ({"sleep": 5}, "time_limit")],
+    ("answer", "condition"),
+    [
+        (ended(1, stderr=b"waiter error"), "build_exit_status"),
+        (timed_out(), "build_time_limit"),
+    ],
 )
-def test_a_timing_process_that_fails_is_broken(stubs, build_root, kernel, conf, answer):
-    stubs.set("nvcc", program=checks.program(stdout="part", **conf))
-    op = operation(kernel, checks.the_target(process_time_limit_cap_s=1))
-    assert call(op) == answer
+def test_a_waiter_build_that_fails_is_its_condition_and_its_log_is_not_kept(
+    client, build_root, kernel, answer, condition
+):
+    client.script = [probed(), timing_built(), answer]
+    keeper = build_log.LogKeeper()
+    assert call(operation(kernel), keeper=keeper) == condition
+    assert "waiter error" not in keeper.held()
+    assert len(client.runs()) == 3
     assert list(build_root.iterdir()) == []
 
 
-@posix_only
-def test_a_timing_driver_that_cannot_start_is_executable_unstartable(
-    stubs, build_root, kernel
+def test_a_waiter_build_with_no_executable_is_build_output_missing(
+    client, build_root, kernel
 ):
-    stubs.set("nvcc", program=checks.program(), mode=0o644)
-    failure_of(operation(kernel), check_failure.KIND_EXECUTABLE_UNSTARTABLE)
+    client.script = [probed(), timing_built(), waiter_built(executable=False)]
+    failure = failure_of(operation(kernel), check_failure.KIND_BUILD_OUTPUT_MISSING)
+    assert "waiter" in failure.message
     assert list(build_root.iterdir()) == []
 
 
-@posix_only
-def test_an_error_of_the_run_no_row_places_passes(
-    stubs, build_root, kernel, monkeypatch
+def test_no_build_time_left_for_the_waiter_starts_no_container(
+    monkeypatch, client, build_root, kernel
 ):
-    def run(*args, **kwargs):
-        raise PermissionError("not placed")
+    ticks = iter((0.0, 1000.0))
+    monkeypatch.setattr(cuda_run, "monotonic", lambda: next(ticks))
+    client.script = [probed(), timing_built()]
+    assert call(operation(kernel)) == "build_time_limit"
+    assert len(client.runs()) == 2
+    assert list(build_root.iterdir()) == []
 
-    monkeypatch.setattr(local_run, "run", run)
-    monkeypatch.setattr(cuda_run.cuda_check, "confirm_device", lambda: None)
-    with pytest.raises(PermissionError):
+
+@pytest.mark.parametrize(
+    ("answer", "condition"),
+    [
+        (waited(status=1), "exit_status"),
+        (waited(status=125), "exit_status"),
+        (ended(127), "exit_status"),
+        (timed_out(), "time_limit"),
+    ],
+)
+def test_a_timing_process_that_fails_is_broken(
+    client, build_root, kernel, answer, condition
+):
+    client.script = [*happy()[:3], answer]
+    assert call(operation(kernel)) == condition
+    assert list(build_root.iterdir()) == []
+
+
+def test_a_timing_stream_with_status_0_and_no_waiter_line_is_not_placed(
+    client, build_root, kernel
+):
+    client.script = [*happy()[:3], ended(0, stdout=REPORT)]
+    with pytest.raises(RuntimeError, match="no row places"):
         call(operation(kernel))
     assert list(build_root.iterdir()) == []
 
 
-def test_the_figure_is_the_host_process_s(monkeypatch, tmp_path):
-    result = local_run.RunResult(0, False, b"r", b"", ("t",), 0.1, max_rss=2048)
-    monkeypatch.setattr(local_run, "run", lambda command, **kwargs: result)
-    target = checks.the_target()
-    answer = cuda_run._time(target, tmp_path / "timing", PARAMETERS, 10)
-    assert answer == (b"r", memory_ceiling.figure(2048, sys.platform))
+def test_no_client_at_the_timing_process_is_executable_unstartable(
+    client, build_root, kernel
+):
+    client.script = [*happy()[:3], raises(local_run.ProgramNotFoundError("docker"))]
+    failure_of(operation(kernel), check_failure.KIND_EXECUTABLE_UNSTARTABLE)
+    assert list(build_root.iterdir()) == []
 
 
-def test_the_time_limit_is_the_timing_limit_of_the_target_s_cap(monkeypatch, tmp_path):
-    seen = {}
-
-    def run(command, *, timeout_s, env):
-        seen["timeout_s"] = timeout_s
-        return local_run.RunResult(0, False, b"r", b"", tuple(command), 0.1)
-
-    monkeypatch.setattr(local_run, "run", run)
-    target = checks.the_target()
-    limit = cuda_run._checked(
-        PARAMETERS, build_log.LogKeeper(), target.process_time_limit_cap_s
-    )
-    assert limit == standin_settings.timing_process_time_limit_s(
-        5, 33, 7, 20, target.process_time_limit_cap_s
-    )
-    cuda_run._time(target, tmp_path / "timing", PARAMETERS, limit)
-    assert seen["timeout_s"] == min(limit, target.process_time_limit_cap_s)
+def test_a_failed_selection_starts_no_build(client, build_root):
+    client.script = [probed()]
+    op = cuda_run.operation_for(checks.the_target(), sources=lambda path: ())
+    failure_of(op, check_failure.KIND_NO_KERNEL_SOURCE)
+    assert len(client.runs()) == 1
+    assert list(build_root.iterdir()) == []
 
 
 # On the real GPU (FR-19 (5))
@@ -253,7 +359,7 @@ def timed_on_the_gpu(tmp_path, fixture, tool):
         {"run_id": "test"},
         checks.HW_PROFILE,
         PARAMETERS,
-        str(checks.FIXTURES),
+        str(checks.placed(tmp_path, fixture)),
         keeper,
         log_path=tmp_path / f"{tool}-log.txt",
     )
@@ -268,7 +374,7 @@ def test_a_correct_kernel_is_timed_on_the_gpu(gpu, tmp_path, tool):
     )
     assert judged.broken is None
     assert timing.parse_report(answer.report) is not None
-    assert answer.memory_bytes is None or answer.memory_bytes >= 1
+    assert type(answer.memory_bytes) is int and answer.memory_bytes > 0
     assert (tmp_path / f"{tool}-log.txt").is_file()
 
 

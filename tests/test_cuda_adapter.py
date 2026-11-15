@@ -1404,3 +1404,47 @@ def test_real_container_without_gpus_does_not_see_the_gpu(gpu_container, probe_d
     assert done.returncode == 0, done.stderr
     assert done.stdout.decode().split() == ["built", "no-gpu"]
     assert b"Cannot find valid GPU" in done.stderr
+
+
+def test_check_device_in_container_appends_what_its_container_gave(
+    client_starts, probe_dir
+):
+    client_starts()
+    outcomes = ["before"]
+    outcome = probe_in_container(probe_dir, outcomes=outcomes)
+    assert_form(outcome, GO_ON)
+    assert outcomes[0] == "before"
+    assert type(outcomes[1]) is standin_container.ContainerResult
+    assert outcomes[1].returncode == 0
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        local_run.ProgramNotFoundError("docker"),
+        OverflowError("limit"),
+        KeyboardInterrupt(),
+    ],
+)
+def test_check_device_in_container_appends_what_its_container_raised(
+    client_starts, probe_dir, error
+):
+    client_starts(error, (0, b"", False))
+    outcomes = []
+    try:
+        probe_in_container(probe_dir, outcomes=outcomes)
+    except BaseException as raised:  # noqa: BLE001
+        assert raised is error
+        assert not isinstance(error, local_run.ProgramNotFoundError)
+    assert outcomes == [error]
+
+
+@pytest.mark.parametrize("outcomes", [(), {}, "x"])
+def test_check_device_in_container_refuses_outcomes_that_are_no_list(
+    client_starts, probe_dir, outcomes
+):
+    starts = client_starts()
+    with pytest.raises(TypeError) as caught:
+        probe_in_container(probe_dir, outcomes=outcomes)
+    assert caught.value.parameter == "outcomes"
+    assert starts.calls == []
