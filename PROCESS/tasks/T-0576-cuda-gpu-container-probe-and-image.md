@@ -45,7 +45,7 @@ If an owner-only part appears, write it in `## Result` as an HQ in the DRIVER §
 - `PROCESS/DRIVER.md`: **§3-5 and §5** (branch `claude/T-0576-<slug>`, the `Task: T-0576` trailer and the PR body's last line, size D30, tests D12, list assertions D21, **storage D29**: temporary files only under `${TMPDIR:-/tmp}/hilclaw-driver/T-0576/`; a tool image is tagged by tool name and version and kept).
 - `PROCESS/DRIVER.md` §6 lines **D29** (toolchain: "task가 요구하는 벤더 툴체인이 있는지는 planner가 아니라 executor가 코드를 쓰기 전에 머신에서(넣어 둔 이미지 포함) 확인한다"; NVIDIA tools from NVIDIA's official site are pre-allowed and installed without a request, with the command, version and URL in `Result`; a missing tool lands nothing and returns BLOCKED with an HQ; FR-19 ⑤ test skipping), **D27 ⑥ ⑦**, **D31**, §8 and §9.
 - `PROCESS/PLAN.md`: P3-16 (line ~80).
-- `PROCESS/STATE.json` `humanQuestions`: HQ-0094 (① and ②: images, licences, storage), HQ-0095 (② (a)), HQ-0096 (② (a)), HQ-0097 ((a) (i)) and **HQ-0104**.
+- `PROCESS/STATE.json` `humanQuestions`: HQ-0094 (① and ②: images, licences, storage), HQ-0095 (② (a)), HQ-0096 (② (a)), HQ-0097 ((a) (i)), **HQ-0104** and **HQ-0105** (its `decision`: the owner did the install, the configuration and the daemon restart of criterion 2 on 2026-11-15).
 - `ARCHITECTURE/decisions/ADR-0207-od33-cuda-target-demonstration.md`: **all**, especially decisions 6, 7 and 9 (slice 5), and Consequences ("Readings for the owner to check", "Runtime acceptance items").
 - `ARCHITECTURE/decisions/ADR-0144-od14-first-case-build-run-container.md` decisions 2, 5 and 6. `ADR-0168-od18-standin-container-situations.md` decision 3 (how statuses 125 to 127 are read). `ADR-0186-od14-standin-toolchain-from-image.md`. `ADR-0195-p3-14-storage-cleanup-and-cas-gc.md` decision 10 (tool image tags).
 - `PROCESS/tasks/T-0572-cuda-target-design-and-device-unavailable.md` `## Result` (the machine facts: Docker Engine 29.1.3 inside WSL2, runtimes `runc` only, no `nvidia-ctk`, no CUDA image) and `PROCESS/tasks/T-0575-cuda-gpu-backend-operations.md` `## Result`.
@@ -79,6 +79,8 @@ If an owner-only part appears, write it in `## Result` as an HQ in the DRIVER §
    - the repository or the package cannot be had.
 
    Do not edit any file under `.claude/`.
+
+   **After HQ-0105.** The owner did the install, the `nvidia-ctk runtime configure` and the daemon restart (HQ-0105 `decision`). Do not install again. Read the installed state on the machine and record it with the `decision`'s facts in `Result`; the repository and the version differ from the guide's (the CUDA WSL repository, 1.19.0-1). No restart is left, so a running container this task did not start is no stop condition. `sudo` still needs a password: the stop conditions apply only to a further step that needs it.
 3. **The image** (decision 7). Pull `nvidia/cuda:13.1.2-devel-ubuntu22.04@sha256:d8332c008e2ef270e82d286e5245e771f839645683075bba21ad9e4fa59dbcbb`. Tag it `cuda:13.1.2` and keep it as a tool image (D29; ADR-0195 decision 10).
    - Record in `Result` the tag, the digest, the size, the `nvcc --version` and `gcc --version` inside it, and the licence file paths inside the image (HQ-0094 ②).
    - If the digest is no longer listed, record what the registry lists and stop as in criterion 2: an image other than the record's is no pre-decided pull.
