@@ -2,7 +2,7 @@
 id: T-0578
 title: PLAN P3-16 (6a) — ADR-0207 slice 6, first half: ADR-0208 records HQ-0104 (a) (a `.cu` attempt file and the `given.cu` bundle at `cuda_gpu`, the reading of an absent candidate kind there, and the rest of slice 6), with the reader of an attempt's `output/` and the placement of given code made target-aware
 phase: P3
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [D31, "PLAN P3-16", "ADR-0207", "HQ-0104", "HQ-0096", FR-10, FR-19, OD-33, OD-23]
 dependsOn: []
