@@ -1001,7 +1001,9 @@
       "reason": "nightly-environment",
       "question": "[T-0559 / nightly #373] 이 보고는 HQ-0099가 이미 다룬 firing이다 — 처리 방식만 정해 달라. [관찰] 보고 `20261112T000458Z`(커밋 `5e8bfddf`, run id `20261112t000500z-5a807905eb731928`): signature `turn_start/stopped_at_check/not_logged_in`, cause `environment`. `new_run` 종료 상태 0, `turn_start` 종료 상태 14; 점검 결과 outcome `not_logged_in`, login `auth_method` `none`·`exit_status` 1·`timed_out` false. 직전 보고 `20261110T180351Z`와 commit·run id 말고는 결과 줄의 모든 필드가 같다. HQ-0099의 `decision`은 이 firing을 claude.ai 로그인 만료 때문인 `not_logged_in` firing으로 직접 적고 있고, 코드 결함이 아니라는 판정도 같다. [머신 조치] HQ-0099에 기록된 조치(`nightly.env`에서 `CLAUDE_CODE_OAUTH_TOKEN`을 setup-token으로 지정)는 이 firing(00:04:58Z) 뒤(00:15Z 무렵)에 이루어졌다. 더 필요한 머신 조치는 알려진 것이 없다. [선택지] (a) 이 task를 다시 하지 않는 답으로 `DONE` 처리하고(NIGHTLY §7), #373은 다음 nightly 통과가 닫게 둔다. (b) 다음 nightly가 여전히 `not_logged_in`을 보고하면 머신을 다시 확인하거나 코드 변경(재조사 task)을 지시한다. [막히는 것] 이 task의 종료뿐(실행할 작업은 없다). [막히지 않는 것] 시간당 드라이버의 다른 task, 다음 nightly.",
       "askedAt": "2026-11-12T01:21:58Z",
-      "issueComment": null
+      "issueComment": null,
+      "resolvedAt": "2026-11-15T10:11:33Z",
+      "decision": "(a) — 이 task는 다시 하지 않는다(T-0559 `DONE`, NIGHTLY §7). 오너(채팅, 2026-11-15): \"HQ-0100 정리해\" — 통합자 세션이 \"대상 이슈 #373은 이미 닫혔고 열린 nightly 실패 이슈도 없어서 (a) 다시 하지 않고 `DONE`으로 닫으면 된다\"고 권한 데 대한 답이다. 통합자 독해(오너의 말이 아님): 오너는 \"(a)\"라고 말하지 않았고, 그 권고를 받아 정리를 지시한 것을 (a)로 기록한다. 통합자 관찰(오너의 말이 아님; 2026-11-15에 `gh`로 확인): #373은 2026-11-12T18:25:24Z에 닫혔다 — 마지막 코멘트가 `nightly-pass: 20261112T180411Z at d40d1d7843a7f2fbac7a61810e5b4f3c53b1b3b4`로, HQ-0099의 머신 조치(2026-11-12T00:15Z 무렵) 뒤 첫 nightly가 통과했다. 라벨 `nightly-failure`의 열린 이슈는 없다. 이 firing(`20261112T000458Z`)은 HQ-0099의 `decision`이 이미 다룬 것이고 그 뒤 추가로 한 머신 조치는 없다. 선택지 (b)의 조건(다음 nightly가 여전히 `not_logged_in`)은 일어나지 않았다."
     },
     {
       "id": "HQ-0101",

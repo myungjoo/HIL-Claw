@@ -2,7 +2,7 @@
 id: T-0559
 title: Nightly failure issue #373 (turn_start/stopped_at_check/not_logged_in) — judge the cause of report 20261112T000458Z and fix a code defect behind it, or return BLOCKED nightly-environment
 phase: P3
-status: BLOCKED
+status: DONE
 commitMode: code
 coversReq: ["nightly #373 20261112T000458Z", D17, D24, "PLAN P2-10"]
 dependsOn: []
