@@ -175,3 +175,30 @@ If an owner-only part appears, write it in `## Result` as an HQ in the DRIVER §
 ## Follow-ups
 
 ## Result
+
+- **Outcome**: DONE. PR #391 (squash-merged; ADR-0208 and slice 6a code in one PR, D20 ①). Review: 1 round, Approve (context-isolated `dev-reviewer`). Two nits followed the Approve. The stale docstring sentence in `kernel_source` was fixed; this is a nit-only change and needs no re-review (D20). The second nit asked to rename the existing test `test_the_module_reads_no_attempt_file_name_and_runs_nothing_on_the_host`. It was not taken, because the task keeps existing tests unchanged beyond D21 list assertions.
+- **Language**: Python. All touched modules are Python 2층 code, and the change adds no process or tool.
+- **ADR-0208 choices for T-0579**:
+  - 1.1: at `cuda_gpu`, `.cu` names are admitted (stem rule of N1 unchanged, so 4 to 65 characters). The compiled set is the `.cu` files; `.c` is admitted but not compiled, and `.h` stays the header suffix. The reader learns the target through the keyword `language` (`"c"` by default, or `"cuda"`) of `read_compiled_set`/`is_admitted_name`. `kernel_source.language_at(accelerator)` gives the one language of the target's contracts, and `"c"` for a name without a target. A `Target` member was not used because it would restate `Target.contracts`.
+  - 1.2: at `cuda_gpu` the bundle is one CUDA C++ file placed as `given.cu`. `given.place` takes the `accelerator` from the `instance.json` it already reads (`given_attempt.given_name`). Multi-file bundles and own build settings are still asked.
+  - 1.3: a kind-less file keeps reading `c_kernel` at every target, now meaning "a kernel built from the attempt's own `output/` in the target's contract language". No reader or tool changes behaviour, and no `CANDIDATE_KINDS` value is added.
+  - 1.4: `bring_in` is unchanged (`language` `"c"`; `coder_loop` is false at `cuda_gpu`). `build_record`, `standin_copies.place_copies` and `attempt_kernel` are also unchanged.
+  - 1.5 (decision 5, for T-0579, no new ADR needed):
+    - `instance_start` true.
+    - ADR-0076 decision 1 widened to `cuda_gpu` with `cpu_standin`'s required set, as ADR-0197 decision 1 did.
+    - `given_eval` accepts `cuda_gpu`.
+    - Default tables: `correctness.check` by `cuda_check.operation_for(target, sources=cuda_check.compiled_sources)`, and `sim.run`/`board.run` by `cuda_run.operation_for` with the same `sources`; no `profiler.collect`.
+    - The demonstration through `run.commit`.
+- **Implementation note for T-0579**: `kernel_source.language_at` and `given_attempt.given_name` import `hilclaw.targets` at the first call, not at module import. Building the tool registry must not import `hilclaw.standin_profile`; `test_building_the_default_registry_imports_no_numpy` enforces this.
+- **Verification**:
+  - Full local suite: 40619 passed, 2372 skipped (Windows host, Python 3.12).
+  - `hilclaw/` coverage: line 98.57%, functions 1805/1822 (99.07%); all four touched modules at 100%.
+  - `ruff check` and `ruff format --check` pass. CI on PR #391 is green.
+  - The touched code reaches no real-GPU test. Toolchain present: WSL2 `nvcc` at `/usr/local/cuda-13.1/bin`, RTX 4070 sm_89.
+- **Changed existing assertions (D21)**, both in `tests/test_cuda_check.py`, and listed in the PR body:
+  - In the public-name test, `kernel_source` was added to the imported set and `compiled_sources` to the public set.
+  - In the no-import test, `kernel_source` was removed from the forbidden import set.
+- **HQ**: none.
+- **Runtime acceptance items (D22)**: none from this slice. T-0579 states its own.
+- **Size**: 9 non-test files. About 300 lines are code and docstrings; the ADR is about 120 lines.
+- **Installs and images**: none. The task directory `${TMPDIR:-/tmp}/hilclaw-driver/T-0578/` is removed with `rm -r` at the end.
