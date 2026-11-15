@@ -55,9 +55,10 @@ Each job has the three parts of :mod:`hilclaw.vendor_adapter`:
   :data:`~hilclaw.vendor_adapter.GO_ON` carrying the probe's version; no
   device, the query program absent, or a query that could not be read, the
   tool failure ``device_unavailable`` with the probe's message.
-  :func:`check_device` joins the query and that reading. An operation calls
-  it before the attempt's process is started; a device lost after it went
-  on is that process's run failure (ADR-0194 decision 3).
+  :func:`check_device` joins the query and that reading on the host. The
+  ``cuda_gpu`` operations run the check in a probe container instead (below)
+  before the attempt's process is started; a device lost after it went on
+  is that process's run failure (ADR-0194 decision 3).
 * **device check in a probe container** (ADR-0207 decisions 6 and 7):
   :func:`check_device_in_container` runs the same query in one new container
   of the ``cuda_gpu`` image with ``--gpus all``

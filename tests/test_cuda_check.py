@@ -596,8 +596,11 @@ def test_confirm_device_lets_pass_what_the_probe_lets_pass(client, tmp_path):
 
 
 def test_select_sources_returns_the_selected_paths_as_a_tuple(kernel):
-    assert cuda_check.select_sources(lambda path: [kernel], "o") == (kernel,)
-    assert cuda_check.select_sources(lambda path: (str(kernel),), "o") == (str(kernel),)
+    seen = []
+    selected = cuda_check.select_sources(
+        lambda path: seen.append(path) or [kernel, str(kernel)], "the-output"
+    )
+    assert selected == (kernel, str(kernel)) and seen == ["the-output"]
 
 
 @pytest.mark.parametrize(
@@ -606,19 +609,22 @@ def test_select_sources_returns_the_selected_paths_as_a_tuple(kernel):
         (lambda path: (), check_failure.KIND_NO_KERNEL_SOURCE),
         (lambda path: [], check_failure.KIND_NO_KERNEL_SOURCE),
         (lambda path: 1 / 0, check_failure.KIND_KERNEL_SOURCE_UNREADABLE),
+        (lambda path: (Path(path),), check_failure.KIND_BUILD_INPUT_MISSING),
+        (
+            lambda path: (Path(path) / "absent.cu",),
+            check_failure.KIND_BUILD_INPUT_MISSING,
+        ),
+        (lambda path: ("bad\0name.cu",), check_failure.KIND_BUILD_INPUT_MISSING),
     ],
+    ids=["empty-tuple", "empty-list", "raises", "a-directory", "absent", "nul"],
 )
-def test_select_sources_answers_a_selection_that_fails(selection, kind):
+def test_select_sources_answers_a_selection_that_names_no_regular_file(
+    tmp_path, selection, kind
+):
     with pytest.raises(tools.ToolFailure) as raised:
-        cuda_check.select_sources(selection, "o")
+        cuda_check.select_sources(selection, str(tmp_path))
     assert raised.value.kind == kind
-
-
-def test_select_sources_answers_a_path_that_is_no_regular_file(tmp_path):
-    for path in (tmp_path / "absent.cu", tmp_path, "bad\0path"):
-        with pytest.raises(tools.ToolFailure) as raised:
-            cuda_check.select_sources(lambda output, path=path: (path,), "o")
-        assert raised.value.kind == check_failure.KIND_BUILD_INPUT_MISSING
+    assert str(tmp_path) not in raised.value.message
 
 
 @pytest.mark.skipif(not hasattr(os, "symlink"), reason="no symbolic links")
@@ -629,17 +635,22 @@ def test_select_sources_answers_a_link_as_no_regular_file(tmp_path, kernel):
     except OSError:
         pytest.skip("symbolic links cannot be made here")
     with pytest.raises(tools.ToolFailure) as raised:
-        cuda_check.select_sources(lambda path: (link,), "o")
+        cuda_check.select_sources(lambda path: (link,), "out")
     assert raised.value.kind == check_failure.KIND_BUILD_INPUT_MISSING
 
 
 @pytest.mark.parametrize(
     "selection",
-    [lambda path: "kernel.cu", lambda path: None, lambda path: (b"kernel.cu",)],
+    [
+        lambda path: "kernel.cu",
+        lambda path: None,
+        lambda path: (1,),
+        lambda path: [b"k"],
+    ],
 )
 def test_select_sources_refuses_a_value_of_another_type(selection):
     with pytest.raises(TypeError):
-        cuda_check.select_sources(selection, "o")
+        cuda_check.select_sources(selection, "out")
 
 
 def test_select_sources_lets_a_request_to_end_pass():
@@ -647,7 +658,7 @@ def test_select_sources_lets_a_request_to_end_pass():
         raise KeyboardInterrupt
 
     with pytest.raises(KeyboardInterrupt):
-        cuda_check.select_sources(selection, "o")
+        cuda_check.select_sources(selection, "out")
 
 
 @pytest.mark.parametrize(
@@ -842,6 +853,14 @@ def test_a_process_whose_forced_removal_fails_leaves_the_directory(
     client, build_root, kernel
 ):
     client.script = [probed(), built(), timed_out(), ended(1)]
+    assert call(operation(kernel)) == "time_limit"
+    assert len(list(build_root.iterdir())) == 1
+
+
+def test_a_process_whose_forced_removal_raises_is_time_limit(
+    client, build_root, kernel
+):
+    client.script = [probed(), built(), timed_out(), raises(OSError("removal"))]
     assert call(operation(kernel)) == "time_limit"
     assert len(list(build_root.iterdir())) == 1
 

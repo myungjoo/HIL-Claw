@@ -323,6 +323,14 @@ def test_a_timing_process_that_fails_is_broken(
     assert list(build_root.iterdir()) == []
 
 
+def test_a_timing_process_whose_forced_removal_raises_is_time_limit(
+    client, build_root, kernel
+):
+    client.script = [*happy()[:3], timed_out(), raises(OSError("removal"))]
+    assert call(operation(kernel)) == "time_limit"
+    assert len(list(build_root.iterdir())) == 1
+
+
 def test_a_timing_stream_with_status_0_and_no_waiter_line_is_not_placed(
     client, build_root, kernel
 ):
