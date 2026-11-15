@@ -2,7 +2,7 @@
 id: T-0579
 title: PLAN P3-16 (6b) — ADR-0207 slice 6, second half: open `cuda_gpu` to given code (`instance_start` true, the start's scope, `given_eval` with a `.cu` file, the `cuda_gpu` backend in the default table) and demonstrate a test-placed fp32 `gemm` kernel through `correctness.check` at both points, `board.run` and `run.commit` on the real GPU
 phase: P3
-status: TODO
+status: IN_PROGRESS
 commitMode: code
 coversReq: [D31, "PLAN P3-16", "ADR-0207", "ADR-0208", "HQ-0104", "HQ-0095", "HQ-0096", "HQ-0097", FR-9, FR-10, FR-19, OD-33, NFR-4]
 dependsOn: [T-0578]
