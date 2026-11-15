@@ -2,7 +2,7 @@
 id: T-0577
 title: PLAN P3-16 (5b) — ADR-0207 slice 5, second half: the `cuda_gpu` operations of `correctness.check`, `sim.run` and `board.run` build and run only in `--gpus all` containers of the named image (probe container first, `nvcc` build, process, the waiter for the timing process), checked on the real GPU
 phase: P3
-status: IN_PROGRESS
+status: DONE
 commitMode: code
 coversReq: [D31, "PLAN P3-16", "ADR-0207", "HQ-0095", "HQ-0096", "HQ-0097", FR-9, FR-10, FR-19, OD-33, OD-14, NFR-4]
 dependsOn: [T-0576]
